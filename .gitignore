@@ -1,0 +1,10 @@
+# Never commit secrets or local wrangler state
+.dev.vars
+.wrangler/
+node_modules/
+*.log
+
+# config.js is committed as a template with placeholder values only.
+# If you keep real (still non-secret) values in it, that is fine — it holds
+# NO tokens. If you would rather not commit your owner/repo, uncomment:
+# config.js

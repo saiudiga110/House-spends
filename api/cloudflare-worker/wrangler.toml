@@ -1,0 +1,20 @@
+name = "home-budget-api"
+main = "worker.js"
+compatibility_date = "2024-11-01"
+
+# --- Non-secret configuration (safe to commit) -----------------------
+# Edit these for your setup, then run `wrangler deploy`.
+[vars]
+GITHUB_OWNER    = "your-github-username"
+GITHUB_REPO     = "home-budget-spends"
+GITHUB_BRANCH   = "main"
+DATA_PATH       = "data"
+# Comma-separated list of browser origins allowed to call this API.
+# Your GitHub Pages origin is https://<username>.github.io  (no repo path).
+ALLOWED_ORIGINS = "https://your-github-username.github.io"
+COMMITTER_NAME   = "Construction Tracker Bot"
+COMMITTER_EMAIL  = "bot@users.noreply.github.com"
+
+# --- Secrets: DO NOT put these here. Set them with wrangler: ---------
+#   wrangler secret put GITHUB_TOKEN
+#   wrangler secret put WRITE_PASSPHRASE      # optional but recommended

@@ -1,0 +1,312 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="color-scheme" content="light dark" />
+  <title>Home Construction Expense Tracker</title>
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ctext y='.9em' font-size='90'%3E%F0%9F%8F%A0%3C/text%3E%3C/svg%3E" />
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <div id="app-loading" class="fullscreen-state">
+    <div class="spinner"></div>
+    <p>Loading construction data...</p>
+  </div>
+
+  <header class="topbar" hidden>
+    <div class="topbar-inner">
+      <div class="brand">
+        <span class="brand-icon">🏠</span>
+        <span class="brand-text" id="brand-project-name">Home Construction Tracker</span>
+      </div>
+      <div class="sync-status">
+        <span id="sync-indicator" class="sync-dot" title="Sync status"></span>
+        <span class="sync-text">
+          <span id="sync-label">Not synced</span>
+          <span id="sync-time" class="muted"></span>
+        </span>
+        <button id="btn-refresh" class="btn btn-ghost btn-sm" type="button" title="Fetch latest data from GitHub">↻ Refresh</button>
+      </div>
+    </div>
+  </header>
+
+  <nav class="tabbar" hidden>
+    <button class="tab active" data-view="dashboard" type="button"><span aria-hidden="true">🏠</span> Dashboard</button>
+    <button class="tab" data-view="expenses" type="button"><span aria-hidden="true">💰</span> Expenses</button>
+    <button class="tab" data-view="reports" type="button"><span aria-hidden="true">📊</span> Reports</button>
+    <button class="tab" data-view="settings" type="button"><span aria-hidden="true">⚙️</span> Settings</button>
+  </nav>
+
+  <main id="main" hidden>
+    <!-- ================= DASHBOARD ================= -->
+    <section class="view" id="view-dashboard">
+      <div id="readonly-banner" class="banner banner-warn" hidden>
+        Read-only mode: no API configured. Data is loaded from the bundled JSON files and changes cannot be saved.
+      </div>
+      <div id="offline-banner" class="banner banner-error" hidden></div>
+
+      <div class="cards-grid">
+        <article class="card stat">
+          <p class="stat-label">Initial Budget</p>
+          <p class="stat-value" id="stat-budget">₹0</p>
+        </article>
+        <article class="card stat">
+          <p class="stat-label">Total Spent</p>
+          <p class="stat-value" id="stat-spent">₹0</p>
+        </article>
+        <article class="card stat">
+          <p class="stat-label">Remaining Budget</p>
+          <p class="stat-value" id="stat-remaining">₹0</p>
+        </article>
+        <article class="card stat">
+          <p class="stat-label">Budget Used</p>
+          <p class="stat-value" id="stat-percent">0%</p>
+        </article>
+      </div>
+
+      <article class="card">
+        <div class="progress-head">
+          <h2>Budget Progress</h2>
+          <span id="progress-caption" class="muted"></span>
+        </div>
+        <div class="progress-track">
+          <div class="progress-fill" id="progress-fill"></div>
+        </div>
+        <div id="budget-warning" class="warning-box" hidden>
+          <strong>⚠ Budget Exceeded</strong>
+          <div class="warning-lines" id="budget-warning-lines"></div>
+        </div>
+      </article>
+
+      <div class="two-col">
+        <article class="card">
+          <h2>Spending by Category</h2>
+          <div id="dash-category-chart" class="chart-host"></div>
+        </article>
+        <article class="card">
+          <div class="card-head">
+            <h2>Recent Expenses</h2>
+            <button class="btn btn-ghost btn-sm" type="button" data-goto="expenses">View all</button>
+          </div>
+          <div id="dash-recent" class="recent-list"></div>
+        </article>
+      </div>
+    </section>
+
+    <!-- ================= EXPENSES ================= -->
+    <section class="view" id="view-expenses" hidden>
+      <div class="card-head">
+        <h1>Expenses</h1>
+        <button class="btn btn-primary" id="btn-add-expense" type="button">+ Add Expense</button>
+      </div>
+
+      <article class="card filters">
+        <input type="search" id="filter-search" placeholder="Search description, vendor, notes…" />
+        <select id="filter-category"><option value="">All categories</option></select>
+        <select id="filter-phase"><option value="">All phases</option></select>
+        <select id="filter-payment"><option value="">All payment methods</option></select>
+        <input type="date" id="filter-from" title="From date" />
+        <input type="date" id="filter-to" title="To date" />
+        <select id="filter-sort">
+          <option value="newest">Newest first</option>
+          <option value="oldest">Oldest first</option>
+          <option value="high">Highest amount</option>
+          <option value="low">Lowest amount</option>
+        </select>
+        <button class="btn btn-ghost btn-sm" id="btn-clear-filters" type="button">Clear</button>
+      </article>
+
+      <p class="muted" id="expense-count"></p>
+
+      <div class="table-wrap">
+        <table class="data-table" id="expense-table">
+          <thead>
+            <tr>
+              <th>Date</th><th>Description</th><th>Category</th><th>Phase</th>
+              <th>Vendor</th><th>Payment</th><th class="num">Amount</th><th>Actions</th>
+            </tr>
+          </thead>
+          <tbody id="expense-tbody"></tbody>
+        </table>
+      </div>
+      <div id="expense-empty" class="empty-state" hidden>No expenses match your filters.</div>
+    </section>
+
+    <!-- ================= REPORTS ================= -->
+    <section class="view" id="view-reports" hidden>
+      <h1>Reports</h1>
+
+      <article class="card">
+        <h2>Budget vs Actual</h2>
+        <div id="report-budget-actual" class="kv-list"></div>
+      </article>
+
+      <div class="two-col">
+        <article class="card">
+          <h2>Spending by Category</h2>
+          <div id="report-category-chart" class="chart-host"></div>
+        </article>
+        <article class="card">
+          <h2>Spending by Construction Phase</h2>
+          <div id="report-phase-chart" class="chart-host"></div>
+        </article>
+      </div>
+
+      <article class="card">
+        <h2>Monthly Spending</h2>
+        <div id="report-monthly-chart" class="chart-host"></div>
+      </article>
+
+      <article class="card">
+        <h2>Spending by Payment Method</h2>
+        <div id="report-payment-chart" class="chart-host"></div>
+      </article>
+    </section>
+
+    <!-- ================= SETTINGS ================= -->
+    <section class="view" id="view-settings" hidden>
+      <h1>Settings</h1>
+
+      <article class="card">
+        <h2>Project Information</h2>
+        <form id="settings-form" class="form-grid">
+          <label>Project Name
+            <input type="text" id="set-name" required />
+          </label>
+          <label>Initial Budget (₹)
+            <input type="number" id="set-budget" min="1" step="1" required />
+          </label>
+          <label>Start Date
+            <input type="date" id="set-start" required />
+          </label>
+          <label>Currency
+            <select id="set-currency">
+              <option value="INR">INR — ₹</option>
+              <option value="USD">USD — $</option>
+              <option value="EUR">EUR — €</option>
+              <option value="GBP">GBP — £</option>
+            </select>
+          </label>
+          <div class="form-actions">
+            <button class="btn btn-primary" type="submit">Save Project Settings</button>
+          </div>
+        </form>
+      </article>
+
+      <article class="card">
+        <h2>Categories</h2>
+        <div class="inline-add">
+          <input type="text" id="new-category" placeholder="New category name" />
+          <button class="btn btn-secondary" id="btn-add-category" type="button">Add</button>
+        </div>
+        <ul class="chip-list" id="category-list"></ul>
+      </article>
+
+      <article class="card">
+        <h2>Data Management</h2>
+        <div class="btn-row">
+          <button class="btn btn-secondary" id="btn-export" type="button">⬇ Export Backup (JSON)</button>
+          <button class="btn btn-secondary" id="btn-import" type="button">⬆ Import Backup</button>
+          <input type="file" id="import-file" accept="application/json,.json" hidden />
+          <button class="btn btn-ghost" id="btn-demo" type="button">Load Demo Data</button>
+        </div>
+        <p class="muted small">Import and Demo Data replace project, budget, expenses and categories, then sync to GitHub. They do not merge with existing data.</p>
+      </article>
+
+      <article class="card">
+        <h2>Synchronization Status</h2>
+        <div class="kv-list" id="sync-detail"></div>
+        <button class="btn btn-ghost btn-sm" id="btn-refresh-2" type="button">↻ Refresh from GitHub</button>
+      </article>
+    </section>
+  </main>
+
+  <!-- ============ EXPENSE MODAL ============ -->
+  <div class="modal-overlay" id="expense-modal" hidden>
+    <div class="modal" role="dialog" aria-modal="true" aria-labelledby="expense-modal-title">
+      <div class="modal-head">
+        <h2 id="expense-modal-title">Add Expense</h2>
+        <button class="icon-btn" id="expense-modal-close" type="button" aria-label="Close">✕</button>
+      </div>
+      <form id="expense-form" class="form-grid">
+        <input type="hidden" id="ex-id" />
+        <label>Date <span class="req">*</span>
+          <input type="date" id="ex-date" required />
+        </label>
+        <label>Description <span class="req">*</span>
+          <input type="text" id="ex-description" required maxlength="200" />
+        </label>
+        <label>Category <span class="req">*</span>
+          <select id="ex-category" required></select>
+        </label>
+        <label>Amount (₹) <span class="req">*</span>
+          <input type="number" id="ex-amount" min="0.01" step="0.01" required />
+        </label>
+        <label>Payment Method
+          <select id="ex-payment">
+            <option value="">—</option>
+            <option>Cash</option><option>UPI</option><option>Bank Transfer</option>
+            <option>Credit Card</option><option>Debit Card</option><option>Cheque</option><option>Other</option>
+          </select>
+        </label>
+        <label>Vendor
+          <input type="text" id="ex-vendor" maxlength="120" />
+        </label>
+        <label>Construction Phase
+          <select id="ex-phase">
+            <option value="">—</option>
+            <option>Planning</option><option>Foundation</option><option>Structure</option>
+            <option>Walls</option><option>Roofing</option><option>Electrical</option>
+            <option>Plumbing</option><option>Flooring</option><option>Painting</option>
+            <option>Interior</option><option>Kitchen</option><option>Bathroom</option>
+            <option>Final Works</option><option>Other</option>
+          </select>
+        </label>
+        <label class="full">Notes
+          <textarea id="ex-notes" rows="2" maxlength="500"></textarea>
+        </label>
+        <p class="form-error" id="expense-form-error" hidden></p>
+        <div class="form-actions">
+          <button class="btn btn-ghost" type="button" id="expense-cancel">Cancel</button>
+          <button class="btn btn-primary" type="submit" id="expense-submit">Save Expense</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- ============ CONFIRM MODAL ============ -->
+  <div class="modal-overlay" id="confirm-modal" hidden>
+    <div class="modal modal-sm" role="dialog" aria-modal="true" aria-labelledby="confirm-title">
+      <div class="modal-head"><h2 id="confirm-title">Please confirm</h2></div>
+      <p id="confirm-message">Are you sure?</p>
+      <div class="form-actions">
+        <button class="btn btn-ghost" type="button" id="confirm-no">Cancel</button>
+        <button class="btn btn-danger" type="button" id="confirm-yes">Delete</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============ PASSPHRASE MODAL ============ -->
+  <div class="modal-overlay" id="pass-modal" hidden>
+    <div class="modal modal-sm" role="dialog" aria-modal="true" aria-labelledby="pass-title">
+      <div class="modal-head"><h2 id="pass-title">API Passphrase</h2></div>
+      <p class="muted small">Your API requires a write passphrase. It is kept only in this browser tab's session storage and sent over HTTPS to your API.</p>
+      <form id="pass-form" class="form-grid">
+        <label class="full">Passphrase
+          <input type="password" id="pass-input" autocomplete="off" required />
+        </label>
+        <div class="form-actions">
+          <button class="btn btn-ghost" type="button" id="pass-cancel">Cancel</button>
+          <button class="btn btn-primary" type="submit">Continue</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <div id="toast-stack" class="toast-stack" aria-live="polite"></div>
+
+  <script src="config.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>

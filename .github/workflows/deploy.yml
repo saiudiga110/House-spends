@@ -1,0 +1,54 @@
+name: Deploy to GitHub Pages
+
+# Publishes the static front-end (index.html, style.css, app.js, config.js, data/)
+# to GitHub Pages on every push to main.
+#
+# NOTE: only public, non-secret files are uploaded. There is no build step and
+# no secret is ever placed in the Pages artifact. The GitHub write token lives
+# only in the separate serverless API.
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Guard against committed secrets
+        run: |
+          if grep -RInE 'github_pat_[A-Za-z0-9_]{20,}|ghp_[A-Za-z0-9]{30,}|ghs_[A-Za-z0-9]{30,}' \
+             --include='*.js' --include='*.html' --include='*.css' --include='*.json' .; then
+            echo "::error::Possible GitHub token committed. Aborting deploy."
+            exit 1
+          fi
+
+      - name: Configure Pages
+        uses: actions/configure-pages@v5
+
+      - name: Upload artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          # Upload the repo root; the API folder is excluded from what the app needs
+          # but is harmless static text. Nothing secret is present.
+          path: .
+
+      - name: Deploy
+        id: deployment
+        uses: actions/deploy-pages@v4
