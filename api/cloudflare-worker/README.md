@@ -14,7 +14,7 @@ server. Free tier: 100k requests/day, far more than a personal tracker needs.
 ## 1. Create a fine-grained GitHub token (least privilege)
 
 1. GitHub → Settings → Developer settings → **Fine-grained personal access tokens** → *Generate new token*.
-2. **Resource owner:** your account. **Repository access:** *Only select repositories* → pick `home-budget-spends`.
+2. **Resource owner:** your account. **Repository access:** *Only select repositories* → pick `House-spends`.
 3. **Permissions → Repository permissions → Contents: Read and write.** Nothing else.
 4. Set a short expiry and renew when it lapses.
 5. Copy the token (starts with `github_pat_...`). You will paste it into `wrangler secret put`, never into a file.
@@ -33,7 +33,7 @@ Edit `wrangler.toml` → `[vars]`:
 | var | value |
 |-----|-------|
 | `GITHUB_OWNER` | your GitHub username |
-| `GITHUB_REPO` | `home-budget-spends` |
+| `GITHUB_REPO` | `House-spends` |
 | `GITHUB_BRANCH` | `main` |
 | `DATA_PATH` | `data` |
 | `ALLOWED_ORIGINS` | `https://<username>.github.io` (the Pages **origin**, no repo path) |

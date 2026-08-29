@@ -13,7 +13,7 @@
  * Required secrets / vars (see wrangler.toml + `wrangler secret put`):
  *   GITHUB_TOKEN        (secret)  fine-grained PAT, Contents: Read and write, this repo only
  *   GITHUB_OWNER        (var)     e.g. "your-github-username"
- *   GITHUB_REPO         (var)     e.g. "home-budget-spends"
+ *   GITHUB_REPO         (var)     e.g. "House-spends"
  *   GITHUB_BRANCH       (var)     e.g. "main"
  *   DATA_PATH           (var)     e.g. "data"
  *   ALLOWED_ORIGINS     (var)     comma list, e.g. "https://you.github.io"

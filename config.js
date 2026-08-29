@@ -3,10 +3,10 @@
  * SECURITY: never put a GitHub token or any secret in this file — it is public.
  */
 window.APP_CONFIG = {
-  GITHUB_OWNER: "your-github-username",
+  GITHUB_OWNER: "saiudiga110",
 
   // Repo that holds the app (this one). Used as the default data repo too.
-  GITHUB_REPOSITORY: "home-budget-spends",
+  GITHUB_REPOSITORY: "House-spends",
 
   // Optional: keep the data in a SEPARATE repo (e.g. a private one) so the
   // expense JSON is not world-readable. Leave "" to use GITHUB_REPOSITORY.

@@ -5,13 +5,13 @@ compatibility_date = "2024-11-01"
 # --- Non-secret configuration (safe to commit) -----------------------
 # Edit these for your setup, then run `wrangler deploy`.
 [vars]
-GITHUB_OWNER    = "your-github-username"
-GITHUB_REPO     = "home-budget-spends"
+GITHUB_OWNER    = "saiudiga110"
+GITHUB_REPO     = "House-spends"
 GITHUB_BRANCH   = "main"
 DATA_PATH       = "data"
 # Comma-separated list of browser origins allowed to call this API.
 # Your GitHub Pages origin is https://<username>.github.io  (no repo path).
-ALLOWED_ORIGINS = "https://your-github-username.github.io"
+ALLOWED_ORIGINS = "https://saiudiga110.github.io"
 COMMITTER_NAME   = "Construction Tracker Bot"
 COMMITTER_EMAIL  = "bot@users.noreply.github.com"
 

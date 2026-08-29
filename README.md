@@ -47,7 +47,7 @@ JSON to be world‑readable, split into two repos:
 
 | repo | visibility | holds |
 |------|------------|-------|
-| `home-budget-spends` | **public** | the app (HTML/CSS/JS) — Pages deploys from here |
+| `House-spends` | **public** | the app (HTML/CSS/JS) — Pages deploys from here |
 | `home-budget-data` | **private** | just `data/project.json`, `expenses.json`, `categories.json` |
 
 Then in `config.js` set `DATA_REPO: "home-budget-data"`. Your fine‑grained token
@@ -78,7 +78,7 @@ without the token can read or write the data.
 ```bash
 git init && git add . && git commit -m "Initial commit"
 git branch -M main
-git remote add origin https://github.com/<username>/home-budget-spends.git
+git remote add origin https://github.com/<username>/House-spends.git
 git push -u origin main
 ```
 
@@ -93,18 +93,18 @@ workflow `.github/workflows/deploy.yml` publishes on every push to `main`.
 Site URL:
 
 ```
-https://<username>.github.io/home-budget-spends/
+https://<username>.github.io/House-spends/
 ```
 
 Relative paths are used throughout and `.nojekyll` is included, so it works
-under the `/home-budget-spends/` sub‑path.
+under the `/House-spends/` sub‑path.
 
 ### 3. Configure `config.js` (public — no secrets)
 
 ```js
 window.APP_CONFIG = {
-  GITHUB_OWNER: "your-github-username",
-  GITHUB_REPOSITORY: "home-budget-spends",
+  GITHUB_OWNER: "saiudiga110",
+  GITHUB_REPOSITORY: "House-spends",
   DATA_REPO: "",            // or "home-budget-data" for a private data repo
   GITHUB_BRANCH: "main",
   DATA_PATH: "data",
@@ -119,7 +119,7 @@ Commit and push.
 
 GitHub → Settings → Developer settings → **Fine‑grained personal access tokens** → *Generate new token*:
 
-- **Repository access:** *Only select repositories* → your data repo (`home-budget-spends`, or `home-budget-data` if you split).
+- **Repository access:** *Only select repositories* → your data repo (`House-spends`, or `home-budget-data` if you split).
 - **Permissions → Repository permissions → Contents: Read and write.** Nothing else.
 - Short expiry; renew when it lapses.
 
@@ -266,7 +266,7 @@ Automated checks live in the repo history; `node --check app.js` and
 ## Project structure
 
 ```
-home-budget-spends/
+House-spends/
 ├── index.html                 # SPA shell — 4 views + modals (expense, confirm, passphrase, token)
 ├── style.css                  # responsive, light + dark
 ├── app.js                     # app logic: direct + API data clients, validation, charts

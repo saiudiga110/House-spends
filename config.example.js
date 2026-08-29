@@ -9,7 +9,7 @@ window.APP_CONFIG = {
   GITHUB_OWNER: "your-github-username",
 
   // The repo that hosts this app on GitHub Pages.
-  GITHUB_REPOSITORY: "home-budget-spends",
+  GITHUB_REPOSITORY: "House-spends",
 
   // Where the data/*.json files live. Leave "" to use GITHUB_REPOSITORY.
   // Set this to a PRIVATE repo (e.g. "home-budget-data") if you don't want the
