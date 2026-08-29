@@ -84,6 +84,13 @@
           <h2>Spending by Category</h2>
           <div id="dash-category-chart" class="chart-host"></div>
         </article>
+        <article class="card" id="dash-funds-card" hidden>
+          <div class="card-head">
+            <h2>Funding Sources</h2>
+            <button class="btn btn-ghost btn-sm" type="button" data-goto="reports">Details</button>
+          </div>
+          <div id="dash-funds" class="fund-mini-list"></div>
+        </article>
         <article class="card">
           <div class="card-head">
             <h2>Recent Expenses</h2>
@@ -106,6 +113,7 @@
         <select id="filter-category"><option value="">All categories</option></select>
         <select id="filter-phase"><option value="">All phases</option></select>
         <select id="filter-payment"><option value="">All payment methods</option></select>
+        <select id="filter-fund"><option value="">All funding sources</option></select>
         <input type="date" id="filter-from" title="From date" />
         <input type="date" id="filter-to" title="To date" />
         <select id="filter-sort">
@@ -124,7 +132,7 @@
           <thead>
             <tr>
               <th>Date</th><th>Description</th><th>Category</th><th>Phase</th>
-              <th>Vendor</th><th>Payment</th><th class="num">Amount</th><th>Actions</th>
+              <th>Funding</th><th>Vendor</th><th>Payment</th><th class="num">Amount</th><th>Actions</th>
             </tr>
           </thead>
           <tbody id="expense-tbody"></tbody>
@@ -152,6 +160,11 @@
           <div id="report-phase-chart" class="chart-host"></div>
         </article>
       </div>
+
+      <article class="card">
+        <h2>Funding Sources — allocated vs spent</h2>
+        <div id="report-fund-table"></div>
+      </article>
 
       <article class="card">
         <h2>Monthly Spending</h2>
@@ -192,6 +205,15 @@
             <button class="btn btn-primary" type="submit">Save Project Settings</button>
           </div>
         </form>
+      </article>
+
+      <article class="card">
+        <div class="card-head">
+          <h2>Funding Sources</h2>
+          <button class="btn btn-primary btn-sm" id="btn-add-fund" type="button">+ Add Source</button>
+        </div>
+        <p class="muted small">Money pools you will spend from — e.g. <em>PF</em> ₹4,00,000 earmarked for appliances (TV, Fridge, AC), a home loan, savings. Tag each expense with the source it is paid from; Reports show allocated vs spent vs remaining per source.</p>
+        <div id="fund-list" class="fund-list"></div>
       </article>
 
       <article class="card">
@@ -273,6 +295,9 @@
             <option>Final Works</option><option>Other</option>
           </select>
         </label>
+        <label>Funding Source
+          <select id="ex-fund"><option value="">— none —</option></select>
+        </label>
         <label class="full">Notes
           <textarea id="ex-notes" rows="2" maxlength="500"></textarea>
         </label>
@@ -280,6 +305,36 @@
         <div class="form-actions">
           <button class="btn btn-ghost" type="button" id="expense-cancel">Cancel</button>
           <button class="btn btn-primary" type="submit" id="expense-submit">Save Expense</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- ============ FUNDING SOURCE MODAL ============ -->
+  <div class="modal-overlay" id="fund-modal" hidden>
+    <div class="modal" role="dialog" aria-modal="true" aria-labelledby="fund-modal-title">
+      <div class="modal-head">
+        <h2 id="fund-modal-title">Add Funding Source</h2>
+        <button class="icon-btn" id="fund-modal-close" type="button" aria-label="Close">✕</button>
+      </div>
+      <form id="fund-form" class="form-grid">
+        <input type="hidden" id="fund-id" />
+        <label>Name <span class="req">*</span>
+          <input type="text" id="fund-name" required maxlength="80" placeholder="PF, Home Loan, Savings…" />
+        </label>
+        <label>Amount (₹) <span class="req">*</span>
+          <input type="number" id="fund-amount" min="0.01" step="0.01" required />
+        </label>
+        <label class="full">Purpose
+          <input type="text" id="fund-purpose" maxlength="200" placeholder="e.g. New home appliances: TV, Fridge, AC" />
+        </label>
+        <label class="full">Notes
+          <textarea id="fund-notes" rows="2" maxlength="500"></textarea>
+        </label>
+        <p class="form-error" id="fund-form-error" hidden></p>
+        <div class="form-actions">
+          <button class="btn btn-ghost" type="button" id="fund-cancel">Cancel</button>
+          <button class="btn btn-primary" type="submit" id="fund-submit">Save Source</button>
         </div>
       </form>
     </div>

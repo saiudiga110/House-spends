@@ -21,8 +21,8 @@
   var CFG = window.APP_CONFIG || {};
   var API_BASE = (CFG.API_BASE_URL || "").replace(/\/+$/, "");
   var DATA_PATH = (CFG.DATA_PATH || "data").replace(/^\/+|\/+$/g, "");
-  var FILES = ["project", "expenses", "categories"];
-  var FILE_NAMES = { project: "project.json", expenses: "expenses.json", categories: "categories.json" };
+  var FILES = ["project", "expenses", "categories", "funds"];
+  var FILE_NAMES = { project: "project.json", expenses: "expenses.json", categories: "categories.json", funds: "funds.json" };
 
   // "direct" (browser -> GitHub with your token) | "api" (serverless proxy) | "readonly"
   var MODE = CFG.AUTH_MODE || (API_BASE ? "api" : "direct");
@@ -55,12 +55,13 @@
     project: null,
     expenses: [],
     categories: DEFAULT_CATEGORIES.slice(),
-    sha: { project: null, expenses: null, categories: null },
+    funds: [],
+    sha: { project: null, expenses: null, categories: null, funds: null },
     lastSync: null,
     view: "dashboard"
   };
 
-  var filters = { search: "", category: "", phase: "", payment: "", from: "", to: "", sort: "newest" };
+  var filters = { search: "", category: "", phase: "", payment: "", fund: "", from: "", to: "", sort: "newest" };
 
   // ---------------------------------------------------------------------
   // Small helpers
@@ -421,6 +422,10 @@
       var cats = (content && Array.isArray(content.categories)) ? content.categories : DEFAULT_CATEGORIES.slice();
       state.categories = dedupeStrings(cats).slice(0, 200);
       if (!state.categories.length) state.categories = DEFAULT_CATEGORIES.slice();
+    } else if (name === "funds") {
+      var fl = (content && Array.isArray(content.funds)) ? content.funds : [];
+      state.funds = fl.filter(function (f) { return f && typeof f === "object" && typeof f.id === "string"; })
+        .map(normalizeFund).slice(0, 200);
     }
   }
 
@@ -453,8 +458,21 @@
       vendor: str(x.vendor),
       phase: str(x.phase),
       notes: str(x.notes),
+      fundId: str(x.fundId),
       createdAt: x.createdAt || now,
       updatedAt: x.updatedAt || now
+    };
+  }
+  function normalizeFund(f) {
+    var now = new Date().toISOString();
+    return {
+      id: String(f.id),
+      name: str(f.name).slice(0, 80) || "Untitled source",
+      amount: Math.max(0, numOr(f.amount, 0)),
+      purpose: str(f.purpose).slice(0, 200),
+      notes: str(f.notes).slice(0, 500),
+      createdAt: f.createdAt || now,
+      updatedAt: f.updatedAt || now
     };
   }
   function numOr(v, d) { var n = Number(v); return isFinite(n) ? n : d; }
@@ -513,6 +531,32 @@
       var parts = k.split("-");
       return { key: MONTHS[Number(parts[1]) - 1] + " " + parts[0], value: map[k] };
     });
+  }
+  function fundById(id) {
+    for (var i = 0; i < state.funds.length; i++) if (state.funds[i].id === id) return state.funds[i];
+    return null;
+  }
+  // Per funding-source: allocated amount vs what has actually been spent from it.
+  function fundSummary() {
+    var spentByFund = {};
+    state.expenses.forEach(function (x) {
+      if (x.fundId) spentByFund[x.fundId] = (spentByFund[x.fundId] || 0) + (Number(x.amount) || 0);
+    });
+    var rows = state.funds.map(function (f) {
+      var spent = spentByFund[f.id] || 0;
+      return {
+        id: f.id, name: f.name, purpose: f.purpose, allocated: f.amount,
+        spent: spent, remaining: f.amount - spent,
+        pct: f.amount > 0 ? (spent / f.amount) * 100 : 0,
+        over: spent > f.amount
+      };
+    });
+    var totalAllocated = state.funds.reduce(function (s, f) { return s + f.amount; }, 0);
+    var taggedSpent = Object.keys(spentByFund).reduce(function (s, k) {
+      return fundById(k) ? s + spentByFund[k] : s;
+    }, 0);
+    var untagged = totalSpent() - taggedSpent;
+    return { rows: rows, totalAllocated: totalAllocated, taggedSpent: taggedSpent, untagged: untagged };
   }
 
   // ---------------------------------------------------------------------
@@ -627,6 +671,26 @@
 
     renderBarChart($("dash-category-chart"), groupSum(function (x) { return x.category; }).slice(0, 8), { empty: "Add an expense to see the breakdown." });
 
+    var fundCard = $("dash-funds-card");
+    if (fundCard) {
+      var fs = fundSummary();
+      fundCard.hidden = state.funds.length === 0;
+      var fh = $("dash-funds");
+      fh.innerHTML = "";
+      fs.rows.forEach(function (r) {
+        var pct = Math.min(100, Math.max(0, r.pct));
+        fh.appendChild(el("div", { class: "fund-mini" }, [
+          el("div", { class: "fund-mini-head" }, [
+            el("span", { text: r.name }),
+            el("span", { class: "muted", text: formatCurrency(r.spent) + " / " + formatCurrency(r.allocated) })
+          ]),
+          el("div", { class: "progress-track", style: "height:8px" }, [
+            el("div", { class: "progress-fill" + (r.over ? " over" : pct >= 80 ? " warn" : ""), style: "width:" + pct + "%" })
+          ])
+        ]));
+      });
+    }
+
     var recent = state.expenses.slice().sort(function (a, b) {
       return (b.createdAt || b.date).localeCompare(a.createdAt || a.date);
     }).slice(0, 6);
@@ -655,6 +719,15 @@
     fillSelect($("filter-category"), state.categories, true);
     fillSelect($("filter-phase"), PHASES, true);
     fillSelect($("filter-payment"), PAYMENT_METHODS, true);
+    var ff = $("filter-fund");
+    if (ff) {
+      var cur = ff.value;
+      ff.innerHTML = "";
+      ff.appendChild(el("option", { value: "", text: "All funding sources" }));
+      ff.appendChild(el("option", { value: "__none__", text: "— not assigned —" }));
+      state.funds.forEach(function (f) { ff.appendChild(el("option", { value: f.id, text: f.name })); });
+      ff.value = cur;
+    }
 
     var rows = applyFilters(state.expenses);
     $("expense-count").textContent = rows.length + " of " + state.expenses.length + " expense(s) · Total shown: " + formatCurrency(rows.reduce(function (s, x) { return s + x.amount; }, 0));
@@ -668,6 +741,7 @@
         el("td", {}, [el("div", { text: x.description }), x.notes ? el("div", { class: "meta muted", text: x.notes }) : null]),
         el("td", { text: x.category }),
         el("td", { text: x.phase || "—" }),
+        el("td", { text: (function () { var f = fundById(x.fundId); return f ? f.name : "—"; })() }),
         el("td", { text: x.vendor || "—" }),
         el("td", { text: x.paymentMethod || "—" }),
         el("td", { class: "num", text: formatCurrency(x.amount) }),
@@ -688,6 +762,8 @@
       if (f.category && x.category !== f.category) return false;
       if (f.phase && x.phase !== f.phase) return false;
       if (f.payment && x.paymentMethod !== f.payment) return false;
+      if (f.fund === "__none__" && x.fundId) return false;
+      if (f.fund && f.fund !== "__none__" && x.fundId !== f.fund) return false;
       if (f.from && x.date < f.from) return false;
       if (f.to && x.date > f.to) return false;
       if (f.search) {
@@ -720,6 +796,48 @@
     renderBarChart($("report-phase-chart"), groupSum(function (x) { return x.phase || "Unassigned"; }), { empty: "No expenses yet." });
     renderBarChart($("report-monthly-chart"), monthlySeries(), { empty: "No expenses yet." });
     renderBarChart($("report-payment-chart"), groupSum(function (x) { return x.paymentMethod || "Unspecified"; }), { empty: "No expenses yet." });
+
+    renderFundReport($("report-fund-table"));
+  }
+
+  // Funding-source report: allocated vs spent vs remaining, per source.
+  function renderFundReport(host) {
+    if (!host) return;
+    host.innerHTML = "";
+    var fs = fundSummary();
+    if (!state.funds.length) {
+      host.appendChild(el("p", { class: "chart-empty", text: "No funding sources yet. Add them in Settings — e.g. \"PF\" ₹4,00,000 for appliances." }));
+      return;
+    }
+    var table = el("table", { class: "data-table" });
+    table.appendChild(el("thead", {}, [el("tr", {}, [
+      el("th", { text: "Source" }), el("th", { text: "Purpose" }),
+      el("th", { class: "num", text: "Allocated" }), el("th", { class: "num", text: "Spent" }),
+      el("th", { class: "num", text: "Remaining" }), el("th", { class: "num", text: "Used" })
+    ])]));
+    var tb = el("tbody");
+    fs.rows.forEach(function (r) {
+      tb.appendChild(el("tr", {}, [
+        el("td", { text: r.name }),
+        el("td", { text: r.purpose || "—" }),
+        el("td", { class: "num", text: formatCurrency(r.allocated) }),
+        el("td", { class: "num", text: formatCurrency(r.spent) }),
+        el("td", { class: "num", text: formatCurrency(r.remaining), style: r.over ? "color:var(--danger)" : "" }),
+        el("td", { class: "num", text: (Math.round(r.pct * 10) / 10) + "%" })
+      ]));
+    });
+    tb.appendChild(el("tr", { style: "font-weight:700" }, [
+      el("td", { text: "Total allocated" }), el("td", { text: "" }),
+      el("td", { class: "num", text: formatCurrency(fs.totalAllocated) }),
+      el("td", { class: "num", text: formatCurrency(fs.taggedSpent) }),
+      el("td", { class: "num", text: formatCurrency(fs.totalAllocated - fs.taggedSpent) }),
+      el("td", { class: "num", text: fs.totalAllocated > 0 ? (Math.round(fs.taggedSpent / fs.totalAllocated * 1000) / 10) + "%" : "—" })
+    ]));
+    table.appendChild(tb);
+    host.appendChild(el("div", { class: "table-wrap" }, [table]));
+    if (fs.untagged > 0) {
+      host.appendChild(el("p", { class: "muted small", text: "Spending not assigned to any source: " + formatCurrency(fs.untagged) }));
+    }
   }
 
   function renderSettings() {
@@ -737,6 +855,27 @@
         el("button", { type: "button", title: "Remove", "aria-label": "Remove " + c, onclick: function () { removeCategory(c); } }, ["✕"])
       ]));
     });
+
+    var fundHost = $("fund-list");
+    if (fundHost) {
+      fundHost.innerHTML = "";
+      if (!state.funds.length) {
+        fundHost.appendChild(el("p", { class: "muted small", text: "No funding sources yet. Add one — e.g. name \"PF\", amount ₹4,00,000, purpose \"New home appliances: TV, Fridge, AC\"." }));
+      }
+      state.funds.forEach(function (f) {
+        var sp = fundSummary().rows.filter(function (r) { return r.id === f.id; })[0] || { spent: 0, remaining: f.amount };
+        fundHost.appendChild(el("div", { class: "fund-row" }, [
+          el("div", {}, [
+            el("div", { text: f.name + " · " + formatCurrency(f.amount) }),
+            el("div", { class: "meta muted", text: (f.purpose || "no purpose noted") + "  —  spent " + formatCurrency(sp.spent) + ", left " + formatCurrency(sp.remaining) })
+          ]),
+          el("div", { class: "row-actions" }, [
+            el("button", { class: "btn btn-ghost btn-sm", type: "button", onclick: function () { openFundModal(f); } }, ["Edit"]),
+            el("button", { class: "btn btn-danger btn-sm", type: "button", onclick: function () { confirmDeleteFund(f); } }, ["Delete"])
+          ])
+        ]));
+      });
+    }
 
     // GitHub connection panel (direct mode only)
     var connWrap = $("connection-panel");
@@ -766,6 +905,7 @@
   // ---------------------------------------------------------------------
   function expensesPayload() { return { expenses: state.expenses.map(normalizeExpense) }; }
   function categoriesPayload() { return { categories: state.categories }; }
+  function fundsPayload() { return { funds: state.funds.map(normalizeFund) }; }
   function projectPayload() {
     var p = state.project;
     p.updatedAt = new Date().toISOString();
@@ -824,6 +964,7 @@
       paymentMethod: $("ex-payment").value,
       vendor: $("ex-vendor").value.trim(),
       phase: $("ex-phase").value,
+      fundId: $("ex-fund").value,
       notes: $("ex-notes").value.trim()
     };
     var errs = validateExpenseInput(input);
@@ -929,16 +1070,92 @@
   }
 
   // ---------------------------------------------------------------------
+  // Funding sources
+  // ---------------------------------------------------------------------
+  function openFundModal(fund) {
+    $("fund-form-error").hidden = true;
+    $("fund-modal-title").textContent = fund ? "Edit Funding Source" : "Add Funding Source";
+    $("fund-id").value = fund ? fund.id : "";
+    $("fund-name").value = fund ? fund.name : "";
+    $("fund-amount").value = fund ? fund.amount : "";
+    $("fund-purpose").value = fund ? fund.purpose : "";
+    $("fund-notes").value = fund ? fund.notes : "";
+    $("fund-modal").hidden = false;
+    $("fund-name").focus();
+  }
+  function closeFundModal() { $("fund-modal").hidden = true; }
+
+  function saveFundFromForm() {
+    var errBox = $("fund-form-error");
+    errBox.hidden = true;
+    var id = $("fund-id").value || "";
+    var name = $("fund-name").value.trim();
+    var amount = Number($("fund-amount").value);
+    if (!name) { errBox.textContent = "A name is required (e.g. PF, Home Loan, Savings)."; errBox.hidden = false; return; }
+    if (!isFinite(amount) || amount <= 0) { errBox.textContent = "Amount must be greater than 0."; errBox.hidden = false; return; }
+    if (state.funds.some(function (f) { return f.id !== id && f.name.toLowerCase() === name.toLowerCase(); })) {
+      errBox.textContent = "A funding source with that name already exists."; errBox.hidden = false; return;
+    }
+    var now = new Date().toISOString();
+    var snapshot = state.funds.map(function (f) { return Object.assign({}, f); });
+    var input = { name: name, amount: amount, purpose: $("fund-purpose").value.trim(), notes: $("fund-notes").value.trim() };
+    var msg;
+    if (id) {
+      var idx = state.funds.findIndex(function (f) { return f.id === id; });
+      if (idx === -1) { errBox.textContent = "This source no longer exists. Refresh and retry."; errBox.hidden = false; return; }
+      state.funds[idx] = normalizeFund(Object.assign({}, state.funds[idx], input, { updatedAt: now }));
+      msg = "Update funding source: " + name;
+    } else {
+      state.funds.push(normalizeFund(Object.assign({ id: "fund-" + Date.now().toString(36) + "-" + Math.random().toString(36).slice(2, 6), createdAt: now, updatedAt: now }, input)));
+      msg = "Add funding source: " + name + " - " + formatCurrency(amount);
+    }
+    withSaving($("fund-submit"), "Saving…", function () {
+      return dataClient.write("funds", fundsPayload(), msg);
+    }).then(function () {
+      closeFundModal();
+      toast("✓ Funding source saved", "ok");
+      renderAll();
+    }).catch(function () { state.funds = snapshot; renderAll(); });
+  }
+
+  function confirmDeleteFund(f) {
+    var inUse = state.expenses.filter(function (x) { return x.fundId === f.id; });
+    var extra = inUse.length ? " " + inUse.length + " expense(s) are assigned to it — they will become unassigned." : "";
+    openConfirm("Delete funding source “" + f.name + "”?" + extra, function () {
+      var snapshot = state.funds.map(function (x) { return Object.assign({}, x); });
+      var expSnapshot = state.expenses.slice();
+      var touchedExpenses = inUse.length > 0;
+      state.funds = state.funds.filter(function (x) { return x.id !== f.id; });
+      state.expenses = state.expenses.map(function (x) {
+        return x.fundId === f.id ? normalizeExpense(Object.assign({}, x, { fundId: "", updatedAt: new Date().toISOString() })) : x;
+      });
+      renderAll();
+      withSaving($("confirm-yes"), "Deleting…", function () {
+        return dataClient.write("funds", fundsPayload(), "Delete funding source: " + f.name)
+          .then(function () { return touchedExpenses ? dataClient.write("expenses", expensesPayload(), "Unassign expenses from deleted source: " + f.name) : null; });
+      }).then(function () {
+        toast("Funding source deleted", "ok");
+        closeConfirm();
+        renderAll();
+      }).catch(function () {
+        state.funds = snapshot; state.expenses = expSnapshot;
+        closeConfirm(); renderAll();
+      });
+    });
+  }
+
+  // ---------------------------------------------------------------------
   // Import / export / demo
   // ---------------------------------------------------------------------
   function exportBackup() {
     var payload = {
       _type: "home-construction-tracker-backup",
-      _version: 1,
+      _version: 2,
       exportedAt: new Date().toISOString(),
       project: state.project,
       expenses: state.expenses,
-      categories: state.categories
+      categories: state.categories,
+      funds: state.funds
     };
     var blob = new Blob([JSON.stringify(payload, null, 2)], { type: "application/json" });
     var a = el("a", { href: URL.createObjectURL(blob), download: "home-construction-backup-" + todayISO() + ".json" });
@@ -952,52 +1169,62 @@
       var parsed;
       try { parsed = JSON.parse(reader.result); }
       catch (e) { toast("Import failed: file is not valid JSON.", "err", 4000); return; }
-      var project, expenses, categories;
+      var project, expenses, categories, funds;
       try {
         project = normalizeProject(parsed.project || {});
         expenses = (Array.isArray(parsed.expenses) ? parsed.expenses : []).filter(isValidExpenseShape).map(normalizeExpense);
         categories = dedupeStrings(Array.isArray(parsed.categories) ? parsed.categories : DEFAULT_CATEGORIES.slice());
+        funds = (Array.isArray(parsed.funds) ? parsed.funds : [])
+          .filter(function (f) { return f && typeof f === "object" && typeof f.id === "string"; })
+          .map(normalizeFund);
         if (project.initialBudget <= 0) throw new Error("budget must be > 0");
         if (!categories.length) categories = DEFAULT_CATEGORIES.slice();
       } catch (e) { toast("Import failed: " + e.message, "err", 4000); return; }
 
-      openConfirm("Import will REPLACE the current project, budget, expenses (" + expenses.length + ") and categories, then sync to GitHub. Continue?", function () {
+      openConfirm("Import will REPLACE the current project, budget, expenses (" + expenses.length + "), categories and funding sources (" + funds.length + "), then sync to GitHub. Continue?", function () {
         closeConfirm();
-        replaceAllData(project, expenses, categories, "Import backup data");
+        replaceAllData(project, expenses, categories, funds, "Import backup data");
       }, "Import");
     };
     reader.readAsText(file);
   }
 
   function loadDemoData() {
-    openConfirm("Load demo data? This REPLACES current project, expenses and categories, then syncs to GitHub.", function () {
+    openConfirm("Load demo data? This REPLACES the current project, expenses, categories and funding sources, then syncs to GitHub.", function () {
       closeConfirm();
       var base = todayISO().slice(0, 7);
       var demoProject = normalizeProject({ projectName: "Demo Home Build", initialBudget: 5000000, currency: "INR", startDate: todayISO() });
-      var rows = [
-        ["Cement - 60 bags", "Cement", 45000, "Bank Transfer", "ABC Traders", "Foundation"],
-        ["TMT steel bars", "Steel", 120000, "Bank Transfer", "SteelMart", "Structure"],
-        ["River sand - 2 loads", "Sand", 35000, "Cash", "Local Supplier", "Foundation"],
-        ["Masonry labour - week 1", "Labour", 80000, "UPI", "Ramesh Crew", "Structure"],
-        ["Red bricks - 5000", "Bricks", 40000, "Cash", "Brick Yard", "Walls"],
-        ["Plumbing rough-in", "Plumbing", 25000, "UPI", "CityPlumb", "Plumbing"],
-        ["Electrical conduits & wiring", "Electrical", 30000, "Credit Card", "Volt Electricals", "Electrical"]
-      ];
       var now = new Date().toISOString();
+      var demoFunds = [
+        normalizeFund({ id: "fund-demo-pf", name: "PF Withdrawal", amount: 400000, purpose: "New home appliances: TV, Fridge, AC, Washing Machine", createdAt: now, updatedAt: now }),
+        normalizeFund({ id: "fund-demo-loan", name: "Home Loan", amount: 3500000, purpose: "Construction — structure, materials, labour", createdAt: now, updatedAt: now }),
+        normalizeFund({ id: "fund-demo-savings", name: "Savings", amount: 1100000, purpose: "Land, approvals, interiors, contingency", createdAt: now, updatedAt: now })
+      ];
+      var rows = [
+        ["Cement - 60 bags", "Cement", 45000, "Bank Transfer", "ABC Traders", "Foundation", "fund-demo-loan"],
+        ["TMT steel bars", "Steel", 120000, "Bank Transfer", "SteelMart", "Structure", "fund-demo-loan"],
+        ["River sand - 2 loads", "Sand", 35000, "Cash", "Local Supplier", "Foundation", "fund-demo-loan"],
+        ["Masonry labour - week 1", "Labour", 80000, "UPI", "Ramesh Crew", "Structure", "fund-demo-loan"],
+        ["Red bricks - 5000", "Bricks", 40000, "Cash", "Brick Yard", "Walls", "fund-demo-loan"],
+        ["Split AC 1.5 ton", "Appliances", 42000, "Credit Card", "CoolWorld", "Interior", "fund-demo-pf"],
+        ["Double-door refrigerator", "Appliances", 48000, "Credit Card", "CoolWorld", "Interior", "fund-demo-pf"],
+        ["55\" LED TV", "Appliances", 55000, "UPI", "ElectroMart", "Interior", "fund-demo-pf"],
+        ["Plan approval fees", "Government Fees", 30000, "Bank Transfer", "Municipal Office", "Planning", "fund-demo-savings"]
+      ];
       var demoExpenses = rows.map(function (r, i) {
         return normalizeExpense({
           id: uid(), date: base + "-" + pad2((i % 26) + 2), description: r[0], category: r[1],
-          amount: r[2], paymentMethod: r[3], vendor: r[4], phase: r[5],
+          amount: r[2], paymentMethod: r[3], vendor: r[4], phase: r[5], fundId: r[6],
           notes: "Demo entry", createdAt: now, updatedAt: now
         });
       });
-      replaceAllData(demoProject, demoExpenses, DEFAULT_CATEGORIES.slice(), "Load demo data");
+      replaceAllData(demoProject, demoExpenses, DEFAULT_CATEGORIES.slice(), demoFunds, "Load demo data");
     }, "Load Demo");
   }
 
-  function replaceAllData(project, expenses, categories, msg) {
-    var snap = { p: state.project, e: state.expenses, c: state.categories };
-    state.project = project; state.expenses = expenses; state.categories = categories;
+  function replaceAllData(project, expenses, categories, funds, msg) {
+    var snap = { p: state.project, e: state.expenses, c: state.categories, f: state.funds };
+    state.project = project; state.expenses = expenses; state.categories = categories; state.funds = funds || [];
     renderAll();
     if (state.mode === "readonly" || (state.mode === "direct" && !state.canWrite)) {
       toast("Not connected: data replaced locally only, not saved to GitHub.", "err", 4000); return;
@@ -1005,10 +1232,11 @@
     // sequential writes so each has a fresh sha
     dataClient.write("project", projectPayload(), msg + " (project)")
       .then(function () { return dataClient.write("categories", categoriesPayload(), msg + " (categories)"); })
+      .then(function () { return dataClient.write("funds", fundsPayload(), msg + " (funds)"); })
       .then(function () { return dataClient.write("expenses", expensesPayload(), msg + " (expenses)"); })
       .then(function () { toast("✓ Data imported and synced to GitHub", "ok"); renderAll(); })
       .catch(function (err) {
-        state.project = snap.p; state.expenses = snap.e; state.categories = snap.c;
+        state.project = snap.p; state.expenses = snap.e; state.categories = snap.c; state.funds = snap.f;
         renderAll();
         handleWriteError(err);
         toast("Import aborted — some files may need a manual refresh.", "err", 5000);
@@ -1020,6 +1248,12 @@
   // ---------------------------------------------------------------------
   function openExpenseModal(expense) {
     fillSelect($("ex-category"), state.categories, false);
+    var fundSel = $("ex-fund");
+    fundSel.innerHTML = "";
+    fundSel.appendChild(el("option", { value: "", text: "— none —" }));
+    state.funds.forEach(function (f) {
+      fundSel.appendChild(el("option", { value: f.id, text: f.name + " (" + formatCurrency(f.amount) + ")" }));
+    });
     $("expense-form-error").hidden = true;
     $("expense-modal-title").textContent = expense ? "Edit Expense" : "Add Expense";
     $("ex-id").value = expense ? expense.id : "";
@@ -1030,6 +1264,7 @@
     $("ex-payment").value = expense ? expense.paymentMethod : "";
     $("ex-vendor").value = expense ? expense.vendor : "";
     $("ex-phase").value = expense ? expense.phase : "";
+    $("ex-fund").value = expense ? (expense.fundId || "") : "";
     $("ex-notes").value = expense ? expense.notes : "";
     $("expense-modal").hidden = false;
     $("ex-description").focus();
@@ -1104,12 +1339,12 @@
 
     // filters
     var fmap = { "filter-search": "search", "filter-category": "category", "filter-phase": "phase",
-      "filter-payment": "payment", "filter-from": "from", "filter-to": "to", "filter-sort": "sort" };
+      "filter-payment": "payment", "filter-fund": "fund", "filter-from": "from", "filter-to": "to", "filter-sort": "sort" };
     Object.keys(fmap).forEach(function (id) {
       $(id).addEventListener("input", function () { filters[fmap[id]] = $(id).value; renderExpenses(); });
     });
     $("btn-clear-filters").addEventListener("click", function () {
-      filters = { search: "", category: "", phase: "", payment: "", from: "", to: "", sort: "newest" };
+      filters = { search: "", category: "", phase: "", payment: "", fund: "", from: "", to: "", sort: "newest" };
       Object.keys(fmap).forEach(function (id) { $(id).value = id === "filter-sort" ? "newest" : ""; });
       renderExpenses();
     });
@@ -1118,6 +1353,10 @@
     $("settings-form").addEventListener("submit", saveProjectFromForm);
     $("btn-add-category").addEventListener("click", addCategory);
     $("new-category").addEventListener("keydown", function (e) { if (e.key === "Enter") { e.preventDefault(); addCategory(); } });
+    $("btn-add-fund").addEventListener("click", function () { openFundModal(null); });
+    $("fund-modal-close").addEventListener("click", closeFundModal);
+    $("fund-cancel").addEventListener("click", closeFundModal);
+    $("fund-form").addEventListener("submit", function (e) { e.preventDefault(); saveFundFromForm(); });
     $("btn-export").addEventListener("click", exportBackup);
     $("btn-import").addEventListener("click", function () { $("import-file").click(); });
     $("import-file").addEventListener("change", function () { if (this.files[0]) { importBackup(this.files[0]); this.value = ""; } });

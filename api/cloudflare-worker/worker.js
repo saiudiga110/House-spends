@@ -26,6 +26,7 @@ const ALLOWED_FILES = {
   project: "project.json",
   expenses: "expenses.json",
   categories: "categories.json",
+  funds: "funds.json",
 };
 
 export default {
@@ -206,6 +207,19 @@ function validateContent(name, content) {
     if (!content.categories.every((c) => typeof c === "string" && c.length <= 80)) return "categories must be short strings";
     return null;
   }
+  if (name === "funds") {
+    if (!Array.isArray(content.funds)) return "funds must be an array";
+    if (content.funds.length > 500) return "too many funds";
+    for (const f of content.funds) {
+      if (!f || typeof f !== "object") return "fund entries must be objects";
+      if (typeof f.id !== "string" || !f.id) return "each fund needs a string id";
+      if (typeof f.name !== "string" || !f.name.trim()) return "each fund needs a name";
+      if (typeof f.amount !== "number" || !isFinite(f.amount) || f.amount < 0) return "fund amount must be a non-negative number";
+    }
+    const fids = content.funds.map((f) => f.id);
+    if (new Set(fids).size !== fids.length) return "duplicate fund ids";
+    return null;
+  }
   return "unknown file";
 }
 
@@ -217,6 +231,7 @@ function emptyContent(name) {
   }
   if (name === "expenses") return { expenses: [] };
   if (name === "categories") return { categories: [] };
+  if (name === "funds") return { funds: [] };
   return {};
 }
 
