@@ -203,6 +203,16 @@
         <ul class="chip-list" id="category-list"></ul>
       </article>
 
+      <article class="card" id="connection-panel" hidden>
+        <h2>GitHub Connection</h2>
+        <p class="muted small" id="connection-status">Not connected.</p>
+        <div class="btn-row">
+          <button class="btn btn-primary btn-sm" id="btn-connect" type="button">Connect to GitHub</button>
+          <button class="btn btn-ghost btn-sm" id="btn-forget-token" type="button" hidden>Forget token</button>
+        </div>
+        <p class="muted small">The token is stored only in this browser (session storage, or local storage if you tick “remember”). It is never written into the app or committed. Anyone without the token can, at most, view the data (and only if the data repo is public).</p>
+      </article>
+
       <article class="card">
         <h2>Data Management</h2>
         <div class="btn-row">
@@ -299,6 +309,34 @@
         <div class="form-actions">
           <button class="btn btn-ghost" type="button" id="pass-cancel">Cancel</button>
           <button class="btn btn-primary" type="submit">Continue</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- ============ GITHUB TOKEN MODAL (direct mode) ============ -->
+  <div class="modal-overlay" id="token-modal" hidden>
+    <div class="modal modal-sm" role="dialog" aria-modal="true" aria-labelledby="token-title">
+      <div class="modal-head"><h2 id="token-title">Connect to GitHub</h2></div>
+      <p class="muted small">
+        Paste a <strong>fine-grained personal access token</strong> with
+        <em>Contents: Read and write</em> on your data repository only.
+        It is stored <strong>only in this browser</strong> — never in the app code, never committed.
+        Only a device holding this token can read or change your data.
+        <a id="token-help-link" href="https://github.com/settings/personal-access-tokens/new" target="_blank" rel="noopener">Create a token ↗</a>
+      </p>
+      <form id="token-form" class="form-grid">
+        <label class="full">GitHub token
+          <input type="password" id="token-input" autocomplete="off" spellcheck="false" placeholder="github_pat_…" required />
+        </label>
+        <label class="full" style="flex-direction:row;align-items:center;gap:.5rem;font-weight:400;color:var(--text)">
+          <input type="checkbox" id="token-remember" style="width:auto" />
+          Remember on this device (uses local storage instead of session-only)
+        </label>
+        <p class="form-error" id="token-error" hidden></p>
+        <div class="form-actions">
+          <button class="btn btn-ghost" type="button" id="token-cancel">Cancel</button>
+          <button class="btn btn-primary" type="submit" id="token-submit">Connect</button>
         </div>
       </form>
     </div>

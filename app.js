@@ -2,9 +2,15 @@
  * Home Construction Expense Tracker — front-end application
  * Vanilla JS. No build step. Safe for GitHub Pages.
  *
- * SECURITY: This file is public. It contains NO secrets. All writes go
- * through the serverless API (config.API_BASE_URL) which holds the only
- * GitHub token as a server-side secret.
+ * SECURITY: This file is public. It contains NO secrets and NO hardcoded
+ * token. Two write modes:
+ *   - "direct": the browser calls the GitHub API using a fine-grained token
+ *     that YOU paste in. It is kept only in this browser (session or, if you
+ *     opt in, local storage) — never in the code, never committed. Only a
+ *     device holding that token can read/write the data repo.
+ *   - "api": writes go through a serverless proxy (config.API_BASE_URL) that
+ *     holds the token as a server-side secret. Best when several people use
+ *     the same app.
  * ===================================================================== */
 (function () {
   "use strict";
@@ -16,6 +22,16 @@
   var API_BASE = (CFG.API_BASE_URL || "").replace(/\/+$/, "");
   var DATA_PATH = (CFG.DATA_PATH || "data").replace(/^\/+|\/+$/g, "");
   var FILES = ["project", "expenses", "categories"];
+  var FILE_NAMES = { project: "project.json", expenses: "expenses.json", categories: "categories.json" };
+
+  // "direct" (browser -> GitHub with your token) | "api" (serverless proxy) | "readonly"
+  var MODE = CFG.AUTH_MODE || (API_BASE ? "api" : "direct");
+  var GH_OWNER = CFG.GITHUB_OWNER || "";
+  // The data can live in a SEPARATE (e.g. private) repo from the app.
+  var DATA_REPO = CFG.DATA_REPO || CFG.GITHUB_REPOSITORY || "";
+  var GH_BRANCH = CFG.GITHUB_BRANCH || "main";
+  var GH_API = "https://api.github.com";
+  var TOKEN_HELP_URL = "https://github.com/settings/personal-access-tokens/new";
 
   var PHASES = ["Planning", "Foundation", "Structure", "Walls", "Roofing",
     "Electrical", "Plumbing", "Flooring", "Painting", "Interior", "Kitchen",
@@ -33,7 +49,9 @@
   // State
   // ---------------------------------------------------------------------
   var state = {
-    mode: API_BASE ? "api" : "readonly",
+    mode: MODE,
+    ghUser: null,      // login string once a token is validated (direct mode)
+    canWrite: MODE === "api",
     project: null,
     expenses: [],
     categories: DEFAULT_CATEGORIES.slice(),
@@ -112,7 +130,9 @@
   }
 
   // ---------------------------------------------------------------------
-  // Passphrase handling (kept only in sessionStorage)
+  // Credentials — never in the code, only in this browser
+  //   API passphrase  -> sessionStorage
+  //   GitHub token    -> sessionStorage, or localStorage if "remember" ticked
   // ---------------------------------------------------------------------
   function getPassphrase() {
     try { return sessionStorage.getItem("hcet_passphrase") || ""; } catch (e) { return ""; }
@@ -137,13 +157,130 @@
     });
   }
 
+  function getToken() {
+    try { return localStorage.getItem("hcet_token") || sessionStorage.getItem("hcet_token") || ""; }
+    catch (e) { return ""; }
+  }
+  function saveToken(tok, remember) {
+    clearToken();
+    try { (remember ? localStorage : sessionStorage).setItem("hcet_token", tok); } catch (e) { /* ignore */ }
+  }
+  function clearToken() {
+    try { localStorage.removeItem("hcet_token"); sessionStorage.removeItem("hcet_token"); } catch (e) { /* ignore */ }
+    state.ghUser = null; state.canWrite = false;
+  }
+  function tokenIsRemembered() {
+    try { return !!localStorage.getItem("hcet_token"); } catch (e) { return false; }
+  }
+
+  // Validate a token against GitHub and confirm write access to the data repo.
+  function validateToken(tok) {
+    return fetch(GH_API + "/user", { headers: ghHeaders(tok) })
+      .then(function (r) {
+        if (r.status === 401) { var e = new Error("That token is invalid or expired."); e.code = "auth"; throw e; }
+        if (!r.ok) { var e2 = new Error("GitHub rejected the token (" + r.status + ")."); e2.code = "auth"; throw e2; }
+        return r.json();
+      })
+      .then(function (u) {
+        return fetch(GH_API + "/repos/" + GH_OWNER + "/" + DATA_REPO, { headers: ghHeaders(tok) })
+          .then(function (r) {
+            if (!r.ok) { var e = new Error("Token cannot access " + GH_OWNER + "/" + DATA_REPO + "."); e.code = "auth"; throw e; }
+            return r.json();
+          })
+          .then(function (repo) {
+            if (!repo.permissions || !repo.permissions.push) {
+              var e = new Error("Token has read-only access. It needs Contents: Read and write."); e.code = "auth"; throw e;
+            }
+            return u.login;
+          });
+      });
+  }
+
+  function ghHeaders(tok) {
+    var h = { "Accept": "application/vnd.github+json", "X-GitHub-Api-Version": "2022-11-28" };
+    if (tok) h["Authorization"] = "Bearer " + tok;
+    return h;
+  }
+
+  // Open the "Connect to GitHub" modal. Resolves to a validated token, or "".
+  function askToken() {
+    return new Promise(function (resolve) {
+      var modal = $("token-modal"), form = $("token-form");
+      var input = $("token-input"), remember = $("token-remember"), errBox = $("token-error");
+      var submit = $("token-submit");
+      input.value = ""; errBox.hidden = true; remember.checked = tokenIsRemembered();
+      modal.hidden = false;
+      input.focus();
+      function close(val) {
+        modal.hidden = true; form.onsubmit = null; $("token-cancel").onclick = null;
+        resolve(val);
+      }
+      $("token-cancel").onclick = function () { close(""); };
+      form.onsubmit = function (e) {
+        e.preventDefault();
+        var v = input.value.trim();
+        if (!v) return;
+        errBox.hidden = true; submit.disabled = true; submit.textContent = "Checking…";
+        validateToken(v).then(function (login) {
+          saveToken(v, remember.checked);
+          state.ghUser = login; state.canWrite = true;
+          submit.disabled = false; submit.textContent = "Connect";
+          close(v);
+        }).catch(function (err) {
+          submit.disabled = false; submit.textContent = "Connect";
+          errBox.textContent = err.message || "Could not verify the token."; errBox.hidden = false;
+        });
+      };
+    });
+  }
+
   // ---------------------------------------------------------------------
   // Data client
   // ---------------------------------------------------------------------
   var dataClient = {
     readAll: function () {
       if (state.mode === "api") return this._readAllApi();
+      if (state.mode === "direct") return this._readAllDirect();
       return this._readAllStatic();
+    },
+
+    _ghContentsUrl: function (name) {
+      return GH_API + "/repos/" + GH_OWNER + "/" + DATA_REPO + "/contents/" +
+        DATA_PATH + "/" + FILE_NAMES[name];
+    },
+
+    _readAllDirect: function () {
+      var tok = getToken();
+      var self = this;
+      return Promise.all(FILES.map(function (name) {
+        return fetch(self._ghContentsUrl(name) + "?ref=" + encodeURIComponent(GH_BRANCH),
+          { headers: ghHeaders(tok), cache: "no-store" })
+          .then(function (r) {
+            if (r.status === 404) return { name: name, content: null, sha: null };
+            if (r.status === 401 || r.status === 403) {
+              var e = new Error("GitHub denied access to " + name + " (" + r.status + ")."); e.code = "auth"; throw e;
+            }
+            if (!r.ok) throw new Error("GitHub read failed for " + name + " (" + r.status + ")");
+            return r.json().then(function (body) {
+              if (body.encoding !== "base64" || !body.content) {
+                if (body.size > 1000000) throw new Error(name + ".json is over 1 MB — too large for direct mode.");
+                return { name: name, content: null, sha: body.sha };
+              }
+              var text = b64decode(body.content);
+              var parsed;
+              try { parsed = JSON.parse(text); }
+              catch (e) { throw new Error(name + ".json in the repo is not valid JSON."); }
+              return { name: name, content: parsed, sha: body.sha };
+            });
+          });
+      })).then(function (results) {
+        results.forEach(function (res) {
+          applyLoadedFile(res.name, res.content);
+          state.sha[res.name] = res.sha || null;
+        });
+        state.lastSync = new Date();
+        if (tok && !state.ghUser) { state.canWrite = true; }
+      });
     },
 
     _readAllApi: function () {
@@ -177,6 +314,7 @@
     // Write one file. Returns Promise resolving to new sha, or rejecting with
     // Error whose .code may be "conflict" | "offline" | "readonly" | "auth".
     write: function (name, content, message) {
+      if (state.mode === "direct") return this._writeDirect(name, content, message);
       if (state.mode !== "api") {
         var e = new Error("Read-only mode: no API configured."); e.code = "readonly"; return Promise.reject(e);
       }
@@ -214,8 +352,64 @@
           var oe = new Error("Unable to connect to the data service."); oe.code = "offline"; oe.cause = err; throw oe;
         });
       });
+    },
+
+    // Direct browser -> GitHub Contents API write. GitHub itself enforces the
+    // optimistic-concurrency check via the blob sha (409 / 422 on mismatch).
+    _writeDirect: function (name, content, message) {
+      var self = this;
+      var tok = getToken();
+      var ensure = tok ? Promise.resolve(tok) : askToken();
+      return ensure.then(function (t) {
+        if (!t) { var e = new Error("A GitHub token is required to save."); e.code = "auth"; throw e; }
+        var body = {
+          message: (message || ("Update " + name)).replace(/[\r\n]+/g, " ").slice(0, 120),
+          content: b64encode(JSON.stringify(content, null, 2) + "\n"),
+          branch: GH_BRANCH
+        };
+        if (state.sha[name]) body.sha = state.sha[name];
+        return fetch(self._ghContentsUrl(name), {
+          method: "PUT",
+          headers: Object.assign({ "Content-Type": "application/json" }, ghHeaders(t)),
+          body: JSON.stringify(body)
+        }).then(function (r) {
+          return r.json().catch(function () { return {}; }).then(function (j) { return { r: r, j: j }; });
+        }).then(function (o) {
+          if (o.r.status === 409 || o.r.status === 422) {
+            var ce = new Error("Data changed on GitHub. Please refresh and try again."); ce.code = "conflict"; throw ce;
+          }
+          if (o.r.status === 401) {
+            clearToken();
+            var ae = new Error("Your GitHub token is invalid or expired. Reconnect and try again."); ae.code = "auth"; throw ae;
+          }
+          if (o.r.status === 403) {
+            var pe = new Error("GitHub refused the write (token lacks Contents: write, or rate limited)."); pe.code = "auth"; throw pe;
+          }
+          if (!o.r.ok || !o.j.content) {
+            throw new Error((o.j && o.j.message) || ("GitHub write failed (" + o.r.status + ")"));
+          }
+          state.sha[name] = o.j.content.sha;
+          state.lastSync = new Date();
+          return o.j.content.sha;
+        }).catch(function (err) {
+          if (err.code) throw err;
+          var oe = new Error("Unable to reach GitHub."); oe.code = "offline"; oe.cause = err; throw oe;
+        });
+      });
     }
   };
+
+  function b64decode(s) {
+    var bin = atob(String(s || "").replace(/\s/g, ""));
+    var bytes = Uint8Array.from(bin, function (c) { return c.charCodeAt(0); });
+    return new TextDecoder().decode(bytes);
+  }
+  function b64encode(str) {
+    var bytes = new TextEncoder().encode(str);
+    var bin = "";
+    bytes.forEach(function (b) { bin += String.fromCharCode(b); });
+    return btoa(bin);
+  }
 
   function applyLoadedFile(name, content) {
     if (name === "project") {
@@ -351,17 +545,34 @@
   function renderAll() {
     $("brand-project-name").textContent = state.project ? state.project.projectName : "Home Construction Tracker";
     renderSyncStatus();
-    $("readonly-banner").hidden = state.mode !== "readonly";
+    renderConnectBanner();
     renderDashboard();
     renderExpenses();
     renderReports();
     renderSettings();
   }
 
+  function renderConnectBanner() {
+    var ro = $("readonly-banner");
+    if (state.mode === "readonly") {
+      ro.hidden = false;
+      ro.textContent = "Read-only mode: data is loaded from the bundled JSON files and changes cannot be saved.";
+    } else if (state.mode === "direct" && !state.canWrite) {
+      ro.hidden = false;
+      ro.textContent = "";
+      ro.appendChild(document.createTextNode("Not connected to GitHub — you can view data but not save. "));
+      ro.appendChild(el("button", { class: "btn btn-primary btn-sm", type: "button",
+        onclick: function () { askToken().then(function (t) { if (t) refresh(); }); } }, ["Connect to GitHub"]));
+    } else {
+      ro.hidden = true;
+    }
+  }
+
   function renderSyncStatus() {
     var dot = $("sync-indicator"), label = $("sync-label"), time = $("sync-time");
     dot.className = "sync-dot";
     if (state.mode === "readonly") { dot.classList.add("warn"); label.textContent = "Read-only"; }
+    else if (state.mode === "direct" && !state.canWrite) { dot.classList.add("warn"); label.textContent = "View only"; }
     else if (state.lastSync) { dot.classList.add("ok"); label.textContent = "Synced"; }
     else { dot.classList.add("err"); label.textContent = "Not synced"; }
     time.textContent = state.lastSync ? formatDateTime(state.lastSync) : "";
@@ -369,9 +580,17 @@
     var detail = $("sync-detail");
     if (detail) {
       detail.innerHTML = "";
-      kv(detail, "Mode", state.mode === "api" ? "Secure API (" + API_BASE + ")" : "Read-only (bundled JSON)");
-      kv(detail, "Repository", (CFG.GITHUB_OWNER || "?") + "/" + (CFG.GITHUB_REPOSITORY || "?"));
-      kv(detail, "Branch", CFG.GITHUB_BRANCH || "main");
+      var modeText = state.mode === "api" ? "Secure API proxy (" + API_BASE + ")"
+        : state.mode === "direct" ? "Direct — browser to GitHub with your token"
+        : "Read-only (bundled JSON)";
+      kv(detail, "Mode", modeText);
+      if (state.mode === "direct") {
+        kv(detail, "GitHub connection", state.canWrite
+          ? "Connected" + (state.ghUser ? " as " + state.ghUser : "") + (tokenIsRemembered() ? " (remembered on this device)" : " (this session only)")
+          : "Not connected");
+      }
+      kv(detail, "Data repository", (GH_OWNER || "?") + "/" + (DATA_REPO || "?"));
+      kv(detail, "Branch", GH_BRANCH);
       kv(detail, "Data path", DATA_PATH + "/");
       kv(detail, "Last synchronized", state.lastSync ? formatDateTime(state.lastSync) : "never");
     }
@@ -519,9 +738,26 @@
       ]));
     });
 
+    // GitHub connection panel (direct mode only)
+    var connWrap = $("connection-panel");
+    if (connWrap) {
+      connWrap.hidden = state.mode !== "direct";
+      if (state.mode === "direct") {
+        var status = $("connection-status");
+        status.textContent = state.canWrite
+          ? "Connected" + (state.ghUser ? " as " + state.ghUser : "") + (tokenIsRemembered() ? " · remembered on this device" : " · this browser session only")
+          : "Not connected — you can view data but not save changes.";
+        $("btn-connect").textContent = state.canWrite ? "Change token" : "Connect to GitHub";
+        $("btn-forget-token").hidden = !state.canWrite;
+      }
+    }
+
     var forms = qsa("#view-settings button, #view-settings input, #view-settings select");
-    if (state.mode === "readonly") {
-      forms.forEach(function (n) { if (n.id !== "btn-export") n.disabled = true; });
+    var canSave = state.mode === "api" || (state.mode === "direct");
+    if (!canSave) {
+      forms.forEach(function (n) {
+        if (n.id !== "btn-export" && n.id !== "btn-connect" && n.id !== "btn-forget-token") n.disabled = true;
+      });
     }
   }
 
@@ -558,11 +794,17 @@
       toast("Data changed on GitHub. Refreshing…", "err", 4000);
       refresh();
     } else if (err.code === "offline") {
-      toast("Unable to connect to the data service. Your change was not saved. Check your connection and try again.", "err", 5000);
+      var svc = state.mode === "direct" ? "GitHub" : "the data service";
+      toast("Unable to connect to " + svc + ". Your change was not saved. Check your connection and try again.", "err", 5000);
       $("offline-banner").hidden = false;
-      $("offline-banner").textContent = "Unable to connect to the data service. Your latest data could not be synchronized.";
+      $("offline-banner").textContent = "Unable to connect to " + svc + ". Your latest data could not be synchronized. Please check your internet connection and try again.";
     } else if (err.code === "auth") {
-      toast("API passphrase missing or rejected. Try the action again.", "err", 4000);
+      if (state.mode === "direct") {
+        toast("GitHub token missing or rejected — reconnect to save.", "err", 4000);
+        renderAll();
+      } else {
+        toast("API passphrase missing or rejected. Try the action again.", "err", 4000);
+      }
     } else if (err.code === "readonly") {
       toast("Read-only mode: configure the API to save changes.", "err", 4000);
     } else {
@@ -757,7 +999,9 @@
     var snap = { p: state.project, e: state.expenses, c: state.categories };
     state.project = project; state.expenses = expenses; state.categories = categories;
     renderAll();
-    if (state.mode !== "api") { toast("Read-only mode: data replaced locally only, not saved.", "err", 4000); return; }
+    if (state.mode === "readonly" || (state.mode === "direct" && !state.canWrite)) {
+      toast("Not connected: data replaced locally only, not saved to GitHub.", "err", 4000); return;
+    }
     // sequential writes so each has a fresh sha
     dataClient.write("project", projectPayload(), msg + " (project)")
       .then(function () { return dataClient.write("categories", categoriesPayload(), msg + " (categories)"); })
@@ -811,7 +1055,7 @@
     return dataClient.readAll().then(function () {
       $("offline-banner").hidden = true;
       renderAll();
-      toast("Data refreshed from " + (state.mode === "api" ? "GitHub" : "bundled files"), "ok");
+      toast("Data refreshed from " + (state.mode === "readonly" ? "bundled files" : "GitHub"), "ok");
     }).catch(function (err) {
       renderSyncStatus();
       $("offline-banner").hidden = false;
@@ -850,11 +1094,12 @@
     $("confirm-no").addEventListener("click", closeConfirm);
     $("confirm-yes").addEventListener("click", function () { if (confirmCb) confirmCb(); });
 
+    var stickyModals = { "pass-modal": 1, "token-modal": 1 };
     qsa(".modal-overlay").forEach(function (ov) {
-      ov.addEventListener("click", function (e) { if (e.target === ov && ov.id !== "pass-modal") ov.hidden = true; });
+      ov.addEventListener("click", function (e) { if (e.target === ov && !stickyModals[ov.id]) ov.hidden = true; });
     });
     document.addEventListener("keydown", function (e) {
-      if (e.key === "Escape") qsa(".modal-overlay").forEach(function (ov) { if (ov.id !== "pass-modal") ov.hidden = true; });
+      if (e.key === "Escape") qsa(".modal-overlay").forEach(function (ov) { if (!stickyModals[ov.id]) ov.hidden = true; });
     });
 
     // filters
@@ -878,6 +1123,17 @@
     $("import-file").addEventListener("change", function () { if (this.files[0]) { importBackup(this.files[0]); this.value = ""; } });
     $("btn-demo").addEventListener("click", loadDemoData);
 
+    var btnConnect = $("btn-connect");
+    if (btnConnect) btnConnect.addEventListener("click", function () { askToken().then(function (t) { if (t) refresh(); else renderAll(); }); });
+    var btnForget = $("btn-forget-token");
+    if (btnForget) btnForget.addEventListener("click", function () {
+      clearToken();
+      toast("GitHub token removed from this browser.", "ok");
+      renderAll();
+    });
+    var tokenHelp = $("token-help-link");
+    if (tokenHelp) tokenHelp.href = TOKEN_HELP_URL;
+
     window.addEventListener("online", function () { $("offline-banner").hidden = true; });
   }
 
@@ -886,22 +1142,46 @@
   // ---------------------------------------------------------------------
   function boot() {
     wireEvents();
+
+    if (state.mode !== "readonly" && (!GH_OWNER || !DATA_REPO)) {
+      return bootError(new Error("config.js is missing GITHUB_OWNER / repository. Edit config.js and reload."));
+    }
+
     dataClient.readAll().then(function () {
       finishBoot();
-    }).catch(function (apiErr) {
+      if (state.mode === "direct" && !state.canWrite) {
+        toast("Connected in view-only mode. Use “Connect to GitHub” to save changes.", "info", 5000);
+      }
+    }).catch(function (err) {
       if (state.mode === "api") {
-        // fall back to bundled static files, read-only
-        console.warn("API unavailable, falling back to read-only:", apiErr);
+        console.warn("API unavailable, falling back to read-only:", err);
         state.mode = "readonly";
         dataClient.readAll().then(function () {
           finishBoot();
           toast("API unreachable — loaded bundled data in read-only mode.", "err", 5000);
-        }).catch(function (staticErr) {
-          bootError(staticErr);
-        });
-      } else {
-        bootError(apiErr);
+        }).catch(bootError);
+        return;
       }
+      if (state.mode === "direct") {
+        // Data repo needs a token (private) or GitHub is unreachable.
+        // Try the bundled static files so the app still opens.
+        var wasAuth = err.code === "auth" || err.code === "offline";
+        var prevMode = state.mode;
+        state.mode = "readonly";
+        dataClient.readAll().then(function () {
+          state.mode = prevMode;   // stay in direct mode; just not connected yet
+          state.canWrite = false;
+          finishBoot();
+          askToken().then(function (t) { if (t) refresh(); });
+        }).catch(function () {
+          state.mode = prevMode;
+          finishBoot();
+          toast(wasAuth ? "Connect your GitHub token to load private data." : ("Could not load data: " + err.message), "err", 6000);
+          askToken().then(function (t) { if (t) refresh(); });
+        });
+        return;
+      }
+      bootError(err);
     });
   }
 

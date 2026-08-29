@@ -5,58 +5,75 @@ home‑construction project. Hosted **free on GitHub Pages**. Unlike a normal
 static app, it stores its data as **JSON files inside a GitHub repository**, so
 you get the same data on every device plus full **Git history / audit trail**.
 
+---
+
+## Two ways to save data — pick one
+
+### A. Direct mode (default — no server, recommended for personal use)
+
 ```
-User
- │
- ▼
-GitHub Pages web app  (index.html / style.css / app.js — NO secrets)
- │  HTTPS
- ▼
-Secure serverless API  (Cloudflare Worker — holds the GitHub token as a secret)
- │  GitHub REST API
- ▼
-GitHub repository
- └── data/
-     ├── project.json
-     ├── expenses.json
-     └── categories.json
+Your browser  ──(your fine-grained token, stored only in your browser)──▶  GitHub API  ──▶  data/*.json
 ```
+
+- You create a **fine‑grained personal access token** (Contents: Read and write, **one repo only**) and paste it into the app once.
+- The token is stored **only in your browser** — session storage, or local storage if you tick *“remember on this device”*. It is **never** in the app code, **never** committed.
+- Only a device that holds the token can write. If your data repo is **private**, only a device with the token can read it either.
+- Nothing to deploy or pay for.
+- Trade‑off: while you use the app the token sits in your browser storage. Scoped to one repo with a short expiry, the worst case is that someone with access to your unlocked browser could edit that one repo — no account‑wide exposure. On a shared computer, don’t tick “remember”, and use *Forget token* / a private window.
+
+### B. API mode (serverless proxy — best when several people share the app)
+
+```
+Browser  ──▶  Cloudflare Worker (holds the token as a server secret)  ──▶  GitHub API  ──▶  data/*.json
+```
+
+- The token lives only as a Worker secret; users never hold it.
+- Optional shared write passphrase.
+- Setup: [`api/cloudflare-worker/README.md`](api/cloudflare-worker/README.md).
+
+Set the mode in `config.js` → `AUTH_MODE: "direct"` or `"api"`.
+
+> **What the token protects is your *repository*, not the expense numbers.**
+> The numbers can be public and it doesn’t matter. But a GitHub *write token*
+> in public page source would let a stranger vandalise your repo — so the token
+> is never in the front end in either mode.
+
+---
+
+## Keeping the data itself private (optional)
+
+GitHub Pages is free only for **public** repos. If you don’t want the expense
+JSON to be world‑readable, split into two repos:
+
+| repo | visibility | holds |
+|------|------------|-------|
+| `home-budget-spends` | **public** | the app (HTML/CSS/JS) — Pages deploys from here |
+| `home-budget-data` | **private** | just `data/project.json`, `expenses.json`, `categories.json` |
+
+Then in `config.js` set `DATA_REPO: "home-budget-data"`. Your fine‑grained token
+(direct mode) or the Worker (API mode) is given access to the **private** data
+repo. The app stays on free Pages because only the app repo is public. Nobody
+without the token can read or write the data.
 
 ---
 
 ## Features
 
 - **Dashboard** — initial budget, total spent, remaining budget, % used, progress bar, budget‑exceeded warning, category breakdown, recent expenses.
-- **Expenses** — add / edit / delete (delete asks for confirmation; edit updates in place, never duplicates). Search (description / vendor / notes), filter by category / phase / payment method / date range, sort by newest / oldest / highest / lowest.
-- **Reports** — budget vs actual, spending by category, by construction phase, by month, by payment method. Simple bar charts that update automatically.
-- **Settings** — edit project name, initial budget, start date, currency; manage custom categories; export / import JSON backup; load demo data; view sync status.
-- **Indian currency formatting** (`₹1,00,000`) with a reusable formatter; also USD / EUR / GBP. Only numeric values are stored.
-- **Data integrity** — every write fetches the current file, validates JSON, and commits with a meaningful message. Concurrent edits are detected via the blob SHA and produce a *“Data changed on GitHub — please refresh”* message instead of a silent overwrite.
-- **Offline / error states** — clear loading, saving, success and failure messages; the app never claims a save succeeded when it did not. Optimistic changes roll back on failure.
-- **Read‑only fallback** — with no API configured (or if the API is unreachable), the app loads the bundled JSON files and disables writes.
-- **Security** — no GitHub token anywhere in the front end; least‑privilege fine‑grained token stored only as a server secret; file + repo allowlist on the API; user content escaped on render (no `innerHTML` with user data).
+- **Expenses** — add / edit / delete (delete confirms; edit updates in place, never duplicates). Search (description / vendor / notes), filter by category / phase / payment method / date range, sort by newest / oldest / highest / lowest.
+- **Reports** — budget vs actual, spending by category, by construction phase, by month, by payment method. Bar charts that update automatically.
+- **Settings** — project name, initial budget, start date, currency; custom categories; export / import JSON backup; load demo data; GitHub connection panel; sync status.
+- **Indian currency formatting** (`₹1,00,000`) via a reusable formatter; also USD / EUR / GBP. Only numeric values are stored — never `"₹42,000"`.
+- **Data integrity** — every write fetches the current file’s SHA; a concurrent edit produces *“Data changed on GitHub — please refresh”* instead of a silent overwrite. Optimistic UI changes roll back on any failure.
+- **Offline / error states** — clear loading / saving / success / failure messages; the app never claims a save succeeded when it did not.
+- **Read‑only fallback** — with no connection the app loads the bundled JSON files and disables writes.
+- **Security** — no token in the front end; least‑privilege fine‑grained token; single‑repo + fixed‑file allowlist; user content rendered via DOM/`textContent`, never `innerHTML`.
 
 ---
 
-## Architecture
+## Setup (direct mode)
 
-| Layer | What it is | Where secrets live |
-|-------|------------|--------------------|
-| Front end | Static `index.html` + `style.css` + `app.js` + `config.js` on GitHub Pages | **none** |
-| Secure API | Cloudflare Worker (`api/cloudflare-worker/`) | `GITHUB_TOKEN`, optional `WRITE_PASSPHRASE` as Worker secrets |
-| Storage | `data/*.json` in this repo, committed by the API via the GitHub Contents API | — |
-
-The browser talks only to the API. The API talks only to GitHub. The token is
-only ever in the API's secret storage.
-
----
-
-## Setup
-
-### 1. Create the repository
-
-Create a GitHub repo named **`home-budget-spends`** (any name works — keep it
-consistent) and push this project to it.
+### 1. Create the repository and push this project
 
 ```bash
 git init && git add . && git commit -m "Initial commit"
@@ -65,72 +82,60 @@ git remote add origin https://github.com/<username>/home-budget-spends.git
 git push -u origin main
 ```
 
-### 2. The data directory & initial JSON files
+The `data/` folder already has starter files (empty expenses, 22 seeded
+categories, a ₹50,00,000 placeholder budget). Edit `data/project.json` now or
+change it later in **Settings**.
 
-They are already in this repo under `data/`:
+### 2. Enable GitHub Pages
 
-- `data/project.json` — project name, `initialBudget` (number), currency, start date.
-- `data/expenses.json` — `{ "expenses": [ … ] }`, starts empty.
-- `data/categories.json` — `{ "categories": [ … ] }`, seeded with 22 construction categories.
-
-Edit `data/project.json` to set your real budget, or do it later in **Settings**.
-
-### 3. Enable GitHub Pages
-
-Repo → **Settings → Pages** → *Build and deployment* → **Source: GitHub Actions**.
-The included workflow `.github/workflows/deploy.yml` publishes on every push to
-`main`. Your site will be at:
+Repo → **Settings → Pages** → *Source: **GitHub Actions***. The included
+workflow `.github/workflows/deploy.yml` publishes on every push to `main`.
+Site URL:
 
 ```
 https://<username>.github.io/home-budget-spends/
 ```
 
-(Relative paths are used throughout, so it works under the `/home-budget-spends/`
-sub‑path. `.nojekyll` is included.)
+Relative paths are used throughout and `.nojekyll` is included, so it works
+under the `/home-budget-spends/` sub‑path.
 
-### 4. Deploy the secure API
-
-Full instructions: [`api/cloudflare-worker/README.md`](api/cloudflare-worker/README.md). Short version:
-
-```bash
-npm install -g wrangler
-wrangler login
-cd api/cloudflare-worker
-# edit wrangler.toml [vars]: GITHUB_OWNER, GITHUB_REPO, GITHUB_BRANCH, DATA_PATH, ALLOWED_ORIGINS
-wrangler secret put GITHUB_TOKEN        # fine-grained PAT, Contents: Read and write, this repo only
-wrangler secret put WRITE_PASSPHRASE    # optional but recommended
-wrangler deploy
-```
-
-Wrangler prints the Worker URL.
-
-### 5. The GitHub secret / token
-
-- Create a **fine‑grained personal access token**: *Repository access → only `home-budget-spends`*, *Permissions → Contents: Read and write*, nothing else.
-- Store it **only** with `wrangler secret put GITHUB_TOKEN`. It is never in a file, never in the repo, never sent to the browser.
-- `WRITE_PASSPHRASE` (optional) is a shared phrase the app prompts for before the first write; it is kept in the browser tab's `sessionStorage` only.
-
-### 6. Connect the front end to the API
-
-Edit **`config.js`** (committed template — contains **no secrets**):
+### 3. Configure `config.js` (public — no secrets)
 
 ```js
 window.APP_CONFIG = {
   GITHUB_OWNER: "your-github-username",
   GITHUB_REPOSITORY: "home-budget-spends",
+  DATA_REPO: "",            // or "home-budget-data" for a private data repo
   GITHUB_BRANCH: "main",
   DATA_PATH: "data",
-  API_BASE_URL: "https://home-budget-api.<subdomain>.workers.dev",
-  API_REQUIRES_PASSPHRASE: true   // false if you did not set WRITE_PASSPHRASE
+  AUTH_MODE: "direct",
+  API_BASE_URL: ""
 };
 ```
 
-Commit and push. Leaving `API_BASE_URL: ""` runs the app in read‑only mode.
+Commit and push.
 
-### 7. Deploy the application
+### 4. Create a fine‑grained token
 
-`git push` to `main` → GitHub Actions builds and deploys Pages automatically.
-Or trigger **Actions → Deploy to GitHub Pages → Run workflow**.
+GitHub → Settings → Developer settings → **Fine‑grained personal access tokens** → *Generate new token*:
+
+- **Repository access:** *Only select repositories* → your data repo (`home-budget-spends`, or `home-budget-data` if you split).
+- **Permissions → Repository permissions → Contents: Read and write.** Nothing else.
+- Short expiry; renew when it lapses.
+
+### 5. Connect
+
+Open the app → **Settings → GitHub Connection → Connect to GitHub** (or the
+banner on the dashboard) → paste the token. The app verifies it can write to the
+data repo, then stores it in your browser only. Done — add expenses.
+
+---
+
+## Setup (API mode)
+
+Do steps 1–2 above, set `AUTH_MODE: "api"` and `API_BASE_URL` in `config.js`,
+then follow [`api/cloudflare-worker/README.md`](api/cloudflare-worker/README.md)
+to deploy the Worker and set the `GITHUB_TOKEN` / `WRITE_PASSPHRASE` secrets.
 
 ---
 
@@ -171,87 +176,90 @@ Or trigger **Actions → Deploy to GitHub Pages → Run workflow**.
 
 ### `data/categories.json`
 ```json
-{ "categories": ["Land", "Architect", "Cement", "Steel", "Labour", "..." ] }
+{ "categories": ["Land", "Architect", "Cement", "Steel", "Labour", "..."] }
 ```
-
-Amounts are always stored as **numbers** — never `"₹42,000"`. Formatting happens
-only at display time via `formatCurrency()`.
 
 ---
 
-## How data flows from the UI to GitHub
+## How data flows from the UI to GitHub (direct mode)
 
-1. You submit the Add/Edit Expense form. The app validates the input (date,
+1. You submit the Add/Edit Expense form. The app validates it (date,
    description, category, amount > 0) and generates a unique `id` for new rows.
 2. The app updates its in‑memory state **optimistically** and re‑renders.
-3. It `PUT`s the whole `expenses.json` object to `POST {API}/api/data/expenses`
-   together with `baseSha` (the SHA it last read) and a commit message like
-   `Add expense: Cement - ₹42,000`.
-4. The Worker checks the passphrase, validates the JSON structure, then fetches
-   the file's **current** SHA from GitHub.
-   - If it differs from `baseSha` → `409 conflict`; the app shows *“Data changed
-     on GitHub — refreshing”* and reloads. Your change is **not** lost silently
-     — it is rolled back and you re‑apply it on fresh data.
-   - Otherwise the Worker commits the file via the GitHub Contents API, creating
-     a real Git commit.
-5. The Worker returns the new SHA; the app stores it and shows
-   *“✓ Expense saved successfully”*.
-6. If the API is unreachable at step 3, the optimistic change is rolled back and
-   the app shows *“Unable to connect to the data service”* — it never pretends
-   the save worked.
+3. It `PUT`s the whole `expenses.json` object to
+   `https://api.github.com/repos/<owner>/<dataRepo>/contents/data/expenses.json`
+   with `Authorization: Bearer <your token>`, the blob `sha` it last read, and a
+   commit message like `Add expense: Steel bars - ₹1,20,000`.
+4. GitHub checks the `sha`.
+   - **Stale** (another device committed since) → `409`/`422`; the app shows
+     *“Data changed on GitHub — refreshing”*, rolls back your optimistic change,
+     and reloads the fresh data so you can re‑apply it. Nothing is silently lost.
+   - **Current** → GitHub writes the file as a real commit and returns the new `sha`.
+5. The app stores the new `sha` and shows *“✓ Expense saved successfully”*.
+6. If GitHub is unreachable at step 3, the optimistic change is rolled back and
+   the app shows *“Unable to reach GitHub”* — it never pretends the save worked.
 
 Viewing data never writes, so there are **no junk commits** for browsing.
-`git log data/expenses.json` is your audit trail.
+`git log data/expenses.json` is your audit trail. In API mode the flow is the
+same except step 3 goes to the Worker, which performs the SHA check and commit
+with its server‑side token.
 
 ---
 
 ## Security
 
 - **Never** put a GitHub token, password, or secret in `index.html`, `app.js`,
-  `style.css`, `config.js`, or any JSON file. These are all public static assets
-  on GitHub Pages. The browser must never receive a GitHub write token.
-- The only token is the fine‑grained PAT, stored **only** as the Worker secret
-  `GITHUB_TOKEN`. It has write access to **one** repo and nothing else.
-- The API exposes a fixed allowlist of three files in one configured repo. The
-  browser cannot request arbitrary repos or paths.
-- All writes validate JSON structure server‑side before committing.
-- CORS on the API is restricted to your GitHub Pages origin.
-- User‑entered text is rendered with `textContent` / DOM nodes, not
+  `style.css`, `config.js`, or any JSON file — all are public static assets.
+- Direct mode: the token exists only in your browser’s session/local storage,
+  entered by you, sent only to `api.github.com` over HTTPS. Use a fine‑grained
+  token scoped to one repo, Contents‑only, with a short expiry.
+- API mode: the token exists only as the Worker secret `GITHUB_TOKEN`.
+- Either way the app can only touch three fixed files in one configured repo —
+  the browser cannot request arbitrary repos or paths.
+- Concurrent‑edit protection via blob SHA; no silent overwrite of newer data.
+- User‑entered text is rendered with `textContent` / DOM nodes, never
   `innerHTML` — prevents XSS.
-- The deploy workflow greps for token patterns and fails if any are found.
+- The deploy workflow greps for token patterns and fails the build if any are found.
 
 ---
 
 ## Usage
 
 1. **Set the budget** — Settings → Initial Budget → Save. Existing expenses are untouched; the dashboard recalculates.
-2. **Add expenses** — Expenses → *+ Add Expense*.
-3. **View the dashboard** — budget, spent, remaining, % used, warnings, breakdown.
-4. **View reports** — category / monthly / phase / payment‑method / budget‑vs‑actual.
-5. **Edit / delete** — from the Expenses table. Delete confirms first.
-6. **Refresh sync** — the *↻ Refresh* button (top bar or Settings) pulls the latest JSON from GitHub. "Last synchronized" shows the time.
-7. **Backup** — Settings → Export Backup downloads `home-construction-backup-YYYY-MM-DD.json` (project + budget + expenses + categories). Import validates before writing back.
+2. **Connect** — Settings → GitHub Connection (direct mode only).
+3. **Add expenses** — Expenses → *+ Add Expense*.
+4. **Dashboard** — budget, spent, remaining, % used, warnings, breakdown.
+5. **Reports** — category / monthly / phase / payment‑method / budget‑vs‑actual.
+6. **Edit / delete** — from the Expenses table. Delete confirms first.
+7. **Refresh** — the *↻ Refresh* button pulls the latest JSON from GitHub. “Last synchronized” shows the time.
+8. **Backup** — Settings → Export Backup downloads `home-construction-backup-YYYY-MM-DD.json`. Import validates before writing back.
 
 ---
 
 ## Testing
 
-Run locally (read‑only unless you point `API_BASE_URL` at a deployed Worker):
+Run locally:
 
 ```bash
 python3 -m http.server 8080
 # open http://localhost:8080
 ```
 
+With `AUTH_MODE: "direct"` and a real token you can exercise the full write path
+locally (GitHub’s API allows browser requests via CORS).
+
 Checklist:
 
-- **Budget** — set it, change it, confirm Total Spent / Remaining / % recalculate; push spend over budget and confirm the ⚠ warning + red progress bar.
-- **Expenses** — add, edit (same row updates), delete (confirm dialog), check totals and charts update.
-- **Reports** — category / monthly / phase / payment totals match the expense list.
-- **GitHub** — with the Worker live: add an expense, confirm a commit appears in `data/expenses.json` history; stop the Worker and confirm the failure message; edit the file on GitHub directly then try to save from a stale tab and confirm the conflict message.
-- **Security** — `grep -RInE 'github_pat_|ghp_' .` finds nothing; view page source on the deployed site and confirm no token.
-- **Responsive** — check at 375 / 768 / 1024 / 1440 px: cards stack, table scrolls horizontally, forms go single‑column, nav stays usable.
+- **Budget** — set / change it; confirm Total Spent / Remaining / % recalc; push spend over budget → ⚠ warning + red progress bar.
+- **Expenses** — add, edit (same row updates, no dup), delete (confirm dialog); totals and charts update.
+- **Reports** — category / monthly / phase / payment totals match the list.
+- **GitHub** — add an expense → a commit appears in `data/expenses.json` history; go offline → failure message, no false success; edit the file on GitHub then save from a stale tab → conflict message.
+- **Security** — `grep -RInE 'github_pat_|ghp_' .` finds nothing; view deployed page source → no token.
+- **Responsive** — 375 / 768 / 1024 / 1440 px: cards stack, table scrolls, forms single‑column, nav usable.
 - **Browsers** — Chrome, Firefox, Edge.
+
+Automated checks live in the repo history; `node --check app.js` and
+`node --check api/cloudflare-worker/worker.js` must pass.
 
 ---
 
@@ -259,22 +267,21 @@ Checklist:
 
 ```
 home-budget-spends/
-├── index.html                 # single-page app shell (4 views + modals)
-├── style.css                  # responsive styling, light + dark
-├── app.js                     # all app logic, API client, validation, charts
-├── config.js                  # public config (owner/repo/API URL) — NO secrets
+├── index.html                 # SPA shell — 4 views + modals (expense, confirm, passphrase, token)
+├── style.css                  # responsive, light + dark
+├── app.js                     # app logic: direct + API data clients, validation, charts
+├── config.js                  # public config — NO secrets
 ├── config.example.js          # annotated template
-├── .nojekyll
-├── README.md
+├── .nojekyll  .gitignore  README.md
 ├── data/
 │   ├── project.json
 │   ├── expenses.json
 │   └── categories.json
 ├── api/
-│   └── cloudflare-worker/
-│       ├── worker.js          # the secure API (holds the token)
-│       ├── wrangler.toml      # non-secret config
-│       └── README.md          # API setup + token instructions
+│   └── cloudflare-worker/      # API mode only
+│       ├── worker.js
+│       ├── wrangler.toml
+│       └── README.md
 └── .github/workflows/deploy.yml
 ```
 
@@ -282,4 +289,4 @@ home-budget-spends/
 
 ## License
 
-MIT — do what you like.
+MIT.
