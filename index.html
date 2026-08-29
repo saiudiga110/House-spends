@@ -48,7 +48,7 @@
 
       <div class="cards-grid">
         <article class="card stat">
-          <p class="stat-label">Initial Budget</p>
+          <p class="stat-label" id="stat-budget-label">Initial Budget</p>
           <p class="stat-value" id="stat-budget">₹0</p>
         </article>
         <article class="card stat">
@@ -77,6 +77,14 @@
           <strong>⚠ Budget Exceeded</strong>
           <div class="warning-lines" id="budget-warning-lines"></div>
         </div>
+      </article>
+
+      <article class="card" id="dash-budgets-card" hidden>
+        <div class="card-head">
+          <h2>Budgets</h2>
+          <button class="btn btn-ghost btn-sm" type="button" data-goto="reports">Details</button>
+        </div>
+        <div id="dash-budgets" class="fund-mini-list"></div>
       </article>
 
       <div class="two-col">
@@ -113,6 +121,7 @@
         <select id="filter-category"><option value="">All categories</option></select>
         <select id="filter-phase"><option value="">All phases</option></select>
         <select id="filter-payment"><option value="">All payment methods</option></select>
+        <select id="filter-budget"><option value="">All budgets</option></select>
         <select id="filter-fund"><option value="">All funding sources</option></select>
         <input type="date" id="filter-from" title="From date" />
         <input type="date" id="filter-to" title="To date" />
@@ -131,7 +140,7 @@
         <table class="data-table" id="expense-table">
           <thead>
             <tr>
-              <th>Date</th><th>Description</th><th>Category</th><th>Phase</th>
+              <th>Date</th><th>Description</th><th>Category</th><th>Budget</th><th>Phase</th>
               <th>Funding</th><th>Vendor</th><th>Payment</th><th class="num">Amount</th><th>Actions</th>
             </tr>
           </thead>
@@ -187,9 +196,6 @@
           <label>Project Name
             <input type="text" id="set-name" required />
           </label>
-          <label>Initial Budget (₹)
-            <input type="number" id="set-budget" min="1" step="1" required />
-          </label>
           <label>Start Date
             <input type="date" id="set-start" required />
           </label>
@@ -205,6 +211,15 @@
             <button class="btn btn-primary" type="submit">Save Project Settings</button>
           </div>
         </form>
+      </article>
+
+      <article class="card">
+        <div class="card-head">
+          <h2>Budgets</h2>
+          <button class="btn btn-primary btn-sm" id="btn-add-budget" type="button">+ Add Budget</button>
+        </div>
+        <p class="muted small">Separate spending limits, each with its own remaining — e.g. <em>Construction</em> ₹45,00,000, <em>Interiors</em> ₹8,00,000, <em>Appliances</em> ₹4,00,000. Every expense is assigned to one budget. The dashboard and Reports show each budget's spent/remaining plus the total across all of them.</p>
+        <div id="budget-list" class="fund-list"></div>
       </article>
 
       <article class="card">
@@ -272,6 +287,9 @@
         <label>Category <span class="req">*</span>
           <select id="ex-category" required></select>
         </label>
+        <label>Budget <span class="req">*</span>
+          <select id="ex-budget" required></select>
+        </label>
         <label>Amount (₹) <span class="req">*</span>
           <input type="number" id="ex-amount" min="0.01" step="0.01" required />
         </label>
@@ -305,6 +323,33 @@
         <div class="form-actions">
           <button class="btn btn-ghost" type="button" id="expense-cancel">Cancel</button>
           <button class="btn btn-primary" type="submit" id="expense-submit">Save Expense</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- ============ BUDGET MODAL ============ -->
+  <div class="modal-overlay" id="budget-modal" hidden>
+    <div class="modal" role="dialog" aria-modal="true" aria-labelledby="budget-modal-title">
+      <div class="modal-head">
+        <h2 id="budget-modal-title">Add Budget</h2>
+        <button class="icon-btn" id="budget-modal-close" type="button" aria-label="Close">✕</button>
+      </div>
+      <form id="budget-form" class="form-grid">
+        <input type="hidden" id="budget-id" />
+        <label>Name <span class="req">*</span>
+          <input type="text" id="budget-name" required maxlength="80" placeholder="Construction, Interiors, Appliances…" />
+        </label>
+        <label>Amount (₹) <span class="req">*</span>
+          <input type="number" id="budget-amount" min="0.01" step="0.01" required />
+        </label>
+        <label class="full">Notes
+          <textarea id="budget-notes" rows="2" maxlength="500"></textarea>
+        </label>
+        <p class="form-error" id="budget-form-error" hidden></p>
+        <div class="form-actions">
+          <button class="btn btn-ghost" type="button" id="budget-cancel">Cancel</button>
+          <button class="btn btn-primary" type="submit" id="budget-submit">Save Budget</button>
         </div>
       </form>
     </div>

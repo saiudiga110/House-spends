@@ -21,8 +21,9 @@
   var CFG = window.APP_CONFIG || {};
   var API_BASE = (CFG.API_BASE_URL || "").replace(/\/+$/, "");
   var DATA_PATH = (CFG.DATA_PATH || "data").replace(/^\/+|\/+$/g, "");
-  var FILES = ["project", "expenses", "categories", "funds"];
-  var FILE_NAMES = { project: "project.json", expenses: "expenses.json", categories: "categories.json", funds: "funds.json" };
+  var FILES = ["project", "budgets", "expenses", "categories", "funds"];
+  var FILE_NAMES = { project: "project.json", budgets: "budgets.json", expenses: "expenses.json", categories: "categories.json", funds: "funds.json" };
+  var PRIMARY_BUDGET_ID = "budget-primary";
 
   // "direct" (browser -> GitHub with your token) | "api" (serverless proxy) | "readonly"
   var MODE = CFG.AUTH_MODE || (API_BASE ? "api" : "direct");
@@ -56,12 +57,13 @@
     expenses: [],
     categories: DEFAULT_CATEGORIES.slice(),
     funds: [],
-    sha: { project: null, expenses: null, categories: null, funds: null },
+    budgets: [],
+    sha: { project: null, budgets: null, expenses: null, categories: null, funds: null },
     lastSync: null,
     view: "dashboard"
   };
 
-  var filters = { search: "", category: "", phase: "", payment: "", fund: "", from: "", to: "", sort: "newest" };
+  var filters = { search: "", category: "", phase: "", payment: "", fund: "", budget: "", from: "", to: "", sort: "newest" };
 
   // ---------------------------------------------------------------------
   // Small helpers
@@ -426,7 +428,21 @@
       var fl = (content && Array.isArray(content.funds)) ? content.funds : [];
       state.funds = fl.filter(function (f) { return f && typeof f === "object" && typeof f.id === "string"; })
         .map(normalizeFund).slice(0, 200);
+    } else if (name === "budgets") {
+      var bl = (content && Array.isArray(content.budgets)) ? content.budgets : [];
+      state.budgets = bl.filter(function (b) { return b && typeof b === "object" && typeof b.id === "string"; })
+        .map(normalizeBudget).slice(0, 200);
+      ensurePrimaryBudget();
     }
+  }
+
+  // If budgets.json has no entries yet, keep one derived from project.initialBudget
+  // so nothing breaks for a project that never used multiple budgets.
+  function ensurePrimaryBudget() {
+    if (state.budgets.length) return;
+    var amount = Number(state.project ? state.project.initialBudget : 0) || 0;
+    var now = new Date().toISOString();
+    state.budgets = [normalizeBudget({ id: PRIMARY_BUDGET_ID, name: "Main Budget", amount: amount, createdAt: now, updatedAt: now })];
   }
 
   // ---------------------------------------------------------------------
@@ -459,8 +475,20 @@
       phase: str(x.phase),
       notes: str(x.notes),
       fundId: str(x.fundId),
+      budgetId: str(x.budgetId),
       createdAt: x.createdAt || now,
       updatedAt: x.updatedAt || now
+    };
+  }
+  function normalizeBudget(b) {
+    var now = new Date().toISOString();
+    return {
+      id: String(b.id),
+      name: str(b.name).slice(0, 80) || "Untitled budget",
+      amount: Math.max(0, numOr(b.amount, 0)),
+      notes: str(b.notes).slice(0, 500),
+      createdAt: b.createdAt || now,
+      updatedAt: b.updatedAt || now
     };
   }
   function normalizeFund(f) {
@@ -504,12 +532,37 @@
   function totalSpent() {
     return state.expenses.reduce(function (s, x) { return s + (Number(x.amount) || 0); }, 0);
   }
+  function totalBudget() {
+    return state.budgets.reduce(function (s, b) { return s + (Number(b.amount) || 0); }, 0);
+  }
+  // Overall summary across ALL budgets.
   function budgetSummary() {
-    var budget = Number(state.project ? state.project.initialBudget : 0) || 0;
+    var budget = totalBudget();
     var spent = totalSpent();
     var remaining = budget - spent;
     var pct = budget > 0 ? (spent / budget) * 100 : 0;
     return { budget: budget, spent: spent, remaining: remaining, pct: pct, over: spent > budget };
+  }
+  function budgetById(id) {
+    for (var i = 0; i < state.budgets.length; i++) if (state.budgets[i].id === id) return state.budgets[i];
+    return null;
+  }
+  // Per budget: limit vs spent (expenses tagged to it) vs remaining.
+  function perBudgetSummary() {
+    var spentBy = {};
+    state.expenses.forEach(function (x) {
+      if (x.budgetId) spentBy[x.budgetId] = (spentBy[x.budgetId] || 0) + (Number(x.amount) || 0);
+    });
+    var rows = state.budgets.map(function (b) {
+      var spent = spentBy[b.id] || 0;
+      return {
+        id: b.id, name: b.name, allocated: b.amount, spent: spent,
+        remaining: b.amount - spent, pct: b.amount > 0 ? (spent / b.amount) * 100 : 0,
+        over: spent > b.amount
+      };
+    });
+    var taggedSpent = Object.keys(spentBy).reduce(function (s, k) { return budgetById(k) ? s + spentBy[k] : s; }, 0);
+    return { rows: rows, unassigned: totalSpent() - taggedSpent, anyOver: rows.some(function (r) { return r.over; }) };
   }
   function groupSum(keyFn) {
     var map = {};
@@ -645,6 +698,8 @@
 
   function renderDashboard() {
     var s = budgetSummary();
+    var multi = state.budgets.length > 1;
+    $("stat-budget-label").textContent = multi ? "All Budgets" : "Initial Budget";
     $("stat-budget").textContent = formatCurrency(s.budget);
     $("stat-spent").textContent = formatCurrency(s.spent);
     $("stat-remaining").textContent = formatCurrency(s.remaining);
@@ -655,18 +710,45 @@
     fill.style.width = Math.min(100, Math.max(0, s.pct)) + "%";
     fill.className = "progress-fill" + (s.over ? " over" : s.pct >= 80 ? " warn" : "");
     $("progress-caption").textContent = formatCurrency(s.spent) + " of " + formatCurrency(s.budget)
-      + " · " + (Math.round(s.pct * 10) / 10) + "% used";
+      + " · " + (Math.round(s.pct * 10) / 10) + "% used" + (multi ? " (all budgets)" : "");
 
+    var pbs = perBudgetSummary();
     var warn = $("budget-warning");
-    if (s.over) {
+    if (s.over || pbs.anyOver) {
       warn.hidden = false;
       var lines = $("budget-warning-lines");
       lines.innerHTML = "";
-      lines.appendChild(el("div", { text: "Budget: " + formatCurrency(s.budget) }));
-      lines.appendChild(el("div", { text: "Spent: " + formatCurrency(s.spent) }));
-      lines.appendChild(el("div", { text: "Exceeded by: " + formatCurrency(Math.abs(s.remaining)) }));
+      if (s.over) {
+        lines.appendChild(el("div", { text: "Total budget: " + formatCurrency(s.budget) }));
+        lines.appendChild(el("div", { text: "Total spent: " + formatCurrency(s.spent) }));
+        lines.appendChild(el("div", { text: "Exceeded by: " + formatCurrency(Math.abs(s.remaining)) }));
+      }
+      pbs.rows.filter(function (r) { return r.over; }).forEach(function (r) {
+        lines.appendChild(el("div", { text: "“" + r.name + "” over by " + formatCurrency(Math.abs(r.remaining)) + " (" + formatCurrency(r.spent) + " of " + formatCurrency(r.allocated) + ")" }));
+      });
+      $("budget-warning").querySelector("strong").textContent = s.over ? "⚠ Budget Exceeded" : "⚠ A budget is exceeded";
     } else {
       warn.hidden = true;
+    }
+
+    // Per-budget progress list
+    var bCard = $("dash-budgets-card");
+    if (bCard) {
+      bCard.hidden = state.budgets.length < 2;
+      var bh = $("dash-budgets");
+      bh.innerHTML = "";
+      pbs.rows.forEach(function (r) {
+        var pct = Math.min(100, Math.max(0, r.pct));
+        bh.appendChild(el("div", { class: "fund-mini" }, [
+          el("div", { class: "fund-mini-head" }, [
+            el("span", { text: r.name }),
+            el("span", { class: "muted", text: formatCurrency(r.spent) + " / " + formatCurrency(r.allocated) + " · " + formatCurrency(r.remaining) + " left" })
+          ]),
+          el("div", { class: "progress-track", style: "height:8px" }, [
+            el("div", { class: "progress-fill" + (r.over ? " over" : pct >= 80 ? " warn" : ""), style: "width:" + pct + "%" })
+          ])
+        ]));
+      });
     }
 
     renderBarChart($("dash-category-chart"), groupSum(function (x) { return x.category; }).slice(0, 8), { empty: "Add an expense to see the breakdown." });
@@ -728,6 +810,15 @@
       state.funds.forEach(function (f) { ff.appendChild(el("option", { value: f.id, text: f.name })); });
       ff.value = cur;
     }
+    var fb = $("filter-budget");
+    if (fb) {
+      var curB = fb.value;
+      fb.innerHTML = "";
+      fb.appendChild(el("option", { value: "", text: "All budgets" }));
+      fb.appendChild(el("option", { value: "__none__", text: "— not assigned —" }));
+      state.budgets.forEach(function (b) { fb.appendChild(el("option", { value: b.id, text: b.name })); });
+      fb.value = curB;
+    }
 
     var rows = applyFilters(state.expenses);
     $("expense-count").textContent = rows.length + " of " + state.expenses.length + " expense(s) · Total shown: " + formatCurrency(rows.reduce(function (s, x) { return s + x.amount; }, 0));
@@ -740,6 +831,7 @@
         el("td", { text: formatDate(x.date) }),
         el("td", {}, [el("div", { text: x.description }), x.notes ? el("div", { class: "meta muted", text: x.notes }) : null]),
         el("td", { text: x.category }),
+        el("td", { text: (function () { var b = budgetById(x.budgetId); return b ? b.name : "—"; })() }),
         el("td", { text: x.phase || "—" }),
         el("td", { text: (function () { var f = fundById(x.fundId); return f ? f.name : "—"; })() }),
         el("td", { text: x.vendor || "—" }),
@@ -764,6 +856,8 @@
       if (f.payment && x.paymentMethod !== f.payment) return false;
       if (f.fund === "__none__" && x.fundId) return false;
       if (f.fund && f.fund !== "__none__" && x.fundId !== f.fund) return false;
+      if (f.budget === "__none__" && x.budgetId) return false;
+      if (f.budget && f.budget !== "__none__" && x.budgetId !== f.budget) return false;
       if (f.from && x.date < f.from) return false;
       if (f.to && x.date > f.to) return false;
       if (f.search) {
@@ -786,11 +880,42 @@
     var s = budgetSummary();
     var ba = $("report-budget-actual");
     ba.innerHTML = "";
-    kv(ba, "Initial Budget", formatCurrency(s.budget));
-    kv(ba, "Total Spent", formatCurrency(s.spent));
-    kv(ba, "Remaining", formatCurrency(s.remaining));
-    kv(ba, "Budget Used", (Math.round(s.pct * 10) / 10) + "%");
-    kv(ba, "Budget Remaining", (Math.round((100 - s.pct) * 10) / 10) + "%");
+    var pbs = perBudgetSummary();
+
+    if (state.budgets.length > 1) {
+      var table = el("table", { class: "data-table" });
+      table.appendChild(el("thead", {}, [el("tr", {}, [
+        el("th", { text: "Budget" }), el("th", { class: "num", text: "Allocated" }),
+        el("th", { class: "num", text: "Spent" }), el("th", { class: "num", text: "Remaining" }),
+        el("th", { class: "num", text: "Used" })
+      ])]));
+      var tb = el("tbody");
+      pbs.rows.forEach(function (r) {
+        tb.appendChild(el("tr", {}, [
+          el("td", { text: r.name }),
+          el("td", { class: "num", text: formatCurrency(r.allocated) }),
+          el("td", { class: "num", text: formatCurrency(r.spent) }),
+          el("td", { class: "num", text: formatCurrency(r.remaining), style: r.over ? "color:var(--danger)" : "" }),
+          el("td", { class: "num", text: (Math.round(r.pct * 10) / 10) + "%" })
+        ]));
+      });
+      tb.appendChild(el("tr", { style: "font-weight:700" }, [
+        el("td", { text: "All budgets" }),
+        el("td", { class: "num", text: formatCurrency(s.budget) }),
+        el("td", { class: "num", text: formatCurrency(s.spent) }),
+        el("td", { class: "num", text: formatCurrency(s.remaining) }),
+        el("td", { class: "num", text: (Math.round(s.pct * 10) / 10) + "%" })
+      ]));
+      table.appendChild(tb);
+      ba.appendChild(el("div", { class: "table-wrap" }, [table]));
+      if (pbs.unassigned > 0) ba.appendChild(el("p", { class: "muted small", text: "Spending not assigned to any budget: " + formatCurrency(pbs.unassigned) }));
+    } else {
+      kv(ba, "Initial Budget", formatCurrency(s.budget));
+      kv(ba, "Total Spent", formatCurrency(s.spent));
+      kv(ba, "Remaining", formatCurrency(s.remaining));
+      kv(ba, "Budget Used", (Math.round(s.pct * 10) / 10) + "%");
+      kv(ba, "Budget Remaining", (Math.round((100 - s.pct) * 10) / 10) + "%");
+    }
 
     renderBarChart($("report-category-chart"), groupSum(function (x) { return x.category; }), { empty: "No expenses yet." });
     renderBarChart($("report-phase-chart"), groupSum(function (x) { return x.phase || "Unassigned"; }), { empty: "No expenses yet." });
@@ -843,9 +968,28 @@
   function renderSettings() {
     if (!state.project) return;
     $("set-name").value = state.project.projectName;
-    $("set-budget").value = state.project.initialBudget;
     $("set-start").value = state.project.startDate;
     $("set-currency").value = state.project.currency;
+
+    var bHost = $("budget-list");
+    if (bHost) {
+      bHost.innerHTML = "";
+      var pbs = perBudgetSummary();
+      state.budgets.forEach(function (b) {
+        var r = pbs.rows.filter(function (x) { return x.id === b.id; })[0] || { spent: 0, remaining: b.amount };
+        bHost.appendChild(el("div", { class: "fund-row" }, [
+          el("div", {}, [
+            el("div", { text: b.name + " · " + formatCurrency(b.amount) }),
+            el("div", { class: "meta muted", text: "spent " + formatCurrency(r.spent) + ", " + formatCurrency(r.remaining) + " left" })
+          ]),
+          el("div", { class: "row-actions" }, [
+            el("button", { class: "btn btn-ghost btn-sm", type: "button", onclick: function () { openBudgetModal(b); } }, ["Edit"]),
+            el("button", { class: "btn btn-danger btn-sm", type: "button", onclick: function () { confirmDeleteBudget(b); } }, ["Delete"])
+          ])
+        ]));
+      });
+      bHost.appendChild(el("p", { class: "muted small", text: "Total across all budgets: " + formatCurrency(totalBudget()) }));
+    }
 
     var list = $("category-list");
     list.innerHTML = "";
@@ -906,9 +1050,12 @@
   function expensesPayload() { return { expenses: state.expenses.map(normalizeExpense) }; }
   function categoriesPayload() { return { categories: state.categories }; }
   function fundsPayload() { return { funds: state.funds.map(normalizeFund) }; }
+  function budgetsPayload() { return { budgets: state.budgets.map(normalizeBudget) }; }
   function projectPayload() {
     var p = state.project;
     p.updatedAt = new Date().toISOString();
+    // Keep initialBudget mirrored to the sum of all budgets for backward compat.
+    p.initialBudget = totalBudget();
     return {
       projectName: p.projectName, initialBudget: p.initialBudget, currency: p.currency,
       startDate: p.startDate, createdAt: p.createdAt, updatedAt: p.updatedAt
@@ -965,9 +1112,11 @@
       vendor: $("ex-vendor").value.trim(),
       phase: $("ex-phase").value,
       fundId: $("ex-fund").value,
+      budgetId: $("ex-budget").value,
       notes: $("ex-notes").value.trim()
     };
     var errs = validateExpenseInput(input);
+    if (state.budgets.length && !input.budgetId) errs.push("Please choose a budget.");
     if (errs.length) { errBox.textContent = errs.join(" "); errBox.hidden = false; return; }
 
     var now = new Date().toISOString();
@@ -1021,8 +1170,6 @@
 
   function saveProjectFromForm(e) {
     e.preventDefault();
-    var budget = Number($("set-budget").value);
-    if (!isFinite(budget) || budget <= 0) { toast("Budget must be greater than 0.", "err"); return; }
     var name = $("set-name").value.trim();
     if (!name) { toast("Project name is required.", "err"); return; }
     var start = $("set-start").value;
@@ -1030,7 +1177,6 @@
 
     var snapshot = Object.assign({}, state.project);
     state.project.projectName = name;
-    state.project.initialBudget = budget;
     state.project.startDate = start;
     state.project.currency = $("set-currency").value;
 
@@ -1145,14 +1291,92 @@
   }
 
   // ---------------------------------------------------------------------
+  // Budgets
+  // ---------------------------------------------------------------------
+  function openBudgetModal(budget) {
+    $("budget-form-error").hidden = true;
+    $("budget-modal-title").textContent = budget ? "Edit Budget" : "Add Budget";
+    $("budget-id").value = budget ? budget.id : "";
+    $("budget-name").value = budget ? budget.name : "";
+    $("budget-amount").value = budget ? budget.amount : "";
+    $("budget-notes").value = budget ? budget.notes : "";
+    $("budget-modal").hidden = false;
+    $("budget-name").focus();
+  }
+  function closeBudgetModal() { $("budget-modal").hidden = true; }
+
+  function saveBudgetFromForm() {
+    var errBox = $("budget-form-error");
+    errBox.hidden = true;
+    var id = $("budget-id").value || "";
+    var name = $("budget-name").value.trim();
+    var amount = Number($("budget-amount").value);
+    if (!name) { errBox.textContent = "A name is required (e.g. Construction, Interiors, Appliances)."; errBox.hidden = false; return; }
+    if (!isFinite(amount) || amount <= 0) { errBox.textContent = "Amount must be greater than 0."; errBox.hidden = false; return; }
+    if (state.budgets.some(function (b) { return b.id !== id && b.name.toLowerCase() === name.toLowerCase(); })) {
+      errBox.textContent = "A budget with that name already exists."; errBox.hidden = false; return;
+    }
+    var now = new Date().toISOString();
+    var snapshot = state.budgets.map(function (b) { return Object.assign({}, b); });
+    var projSnap = Object.assign({}, state.project);
+    var input = { name: name, amount: amount, notes: $("budget-notes").value.trim() };
+    var msg;
+    if (id) {
+      var idx = state.budgets.findIndex(function (b) { return b.id === id; });
+      if (idx === -1) { errBox.textContent = "This budget no longer exists. Refresh and retry."; errBox.hidden = false; return; }
+      state.budgets[idx] = normalizeBudget(Object.assign({}, state.budgets[idx], input, { updatedAt: now }));
+      msg = "Update budget: " + name;
+    } else {
+      state.budgets.push(normalizeBudget(Object.assign({ id: "budget-" + Date.now().toString(36) + "-" + Math.random().toString(36).slice(2, 6), createdAt: now, updatedAt: now }, input)));
+      msg = "Add budget: " + name + " - " + formatCurrency(amount);
+    }
+    withSaving($("budget-submit"), "Saving…", function () {
+      return dataClient.write("budgets", budgetsPayload(), msg)
+        .then(function () { return dataClient.write("project", projectPayload(), "Sync total budget"); });
+    }).then(function () {
+      closeBudgetModal();
+      toast("✓ Budget saved", "ok");
+      renderAll();
+    }).catch(function () { state.budgets = snapshot; state.project = projSnap; renderAll(); });
+  }
+
+  function confirmDeleteBudget(b) {
+    if (state.budgets.length <= 1) { toast("At least one budget is required.", "err", 4000); return; }
+    var inUse = state.expenses.filter(function (x) { return x.budgetId === b.id; });
+    var extra = inUse.length ? " " + inUse.length + " expense(s) are assigned to it — they will become unassigned." : "";
+    openConfirm("Delete budget “" + b.name + "” (" + formatCurrency(b.amount) + ")?" + extra, function () {
+      var bSnap = state.budgets.map(function (x) { return Object.assign({}, x); });
+      var eSnap = state.expenses.slice();
+      var pSnap = Object.assign({}, state.project);
+      var touched = inUse.length > 0;
+      state.budgets = state.budgets.filter(function (x) { return x.id !== b.id; });
+      state.expenses = state.expenses.map(function (x) {
+        return x.budgetId === b.id ? normalizeExpense(Object.assign({}, x, { budgetId: "", updatedAt: new Date().toISOString() })) : x;
+      });
+      renderAll();
+      withSaving($("confirm-yes"), "Deleting…", function () {
+        return dataClient.write("budgets", budgetsPayload(), "Delete budget: " + b.name)
+          .then(function () { return dataClient.write("project", projectPayload(), "Sync total budget"); })
+          .then(function () { return touched ? dataClient.write("expenses", expensesPayload(), "Unassign expenses from deleted budget: " + b.name) : null; });
+      }).then(function () {
+        toast("Budget deleted", "ok"); closeConfirm(); renderAll();
+      }).catch(function () {
+        state.budgets = bSnap; state.expenses = eSnap; state.project = pSnap;
+        closeConfirm(); renderAll();
+      });
+    });
+  }
+
+  // ---------------------------------------------------------------------
   // Import / export / demo
   // ---------------------------------------------------------------------
   function exportBackup() {
     var payload = {
       _type: "home-construction-tracker-backup",
-      _version: 2,
+      _version: 3,
       exportedAt: new Date().toISOString(),
       project: state.project,
+      budgets: state.budgets,
       expenses: state.expenses,
       categories: state.categories,
       funds: state.funds
@@ -1169,7 +1393,7 @@
       var parsed;
       try { parsed = JSON.parse(reader.result); }
       catch (e) { toast("Import failed: file is not valid JSON.", "err", 4000); return; }
-      var project, expenses, categories, funds;
+      var project, expenses, categories, funds, budgets;
       try {
         project = normalizeProject(parsed.project || {});
         expenses = (Array.isArray(parsed.expenses) ? parsed.expenses : []).filter(isValidExpenseShape).map(normalizeExpense);
@@ -1177,66 +1401,81 @@
         funds = (Array.isArray(parsed.funds) ? parsed.funds : [])
           .filter(function (f) { return f && typeof f === "object" && typeof f.id === "string"; })
           .map(normalizeFund);
-        if (project.initialBudget <= 0) throw new Error("budget must be > 0");
+        budgets = (Array.isArray(parsed.budgets) ? parsed.budgets : [])
+          .filter(function (b) { return b && typeof b === "object" && typeof b.id === "string"; })
+          .map(normalizeBudget);
+        if (!budgets.length && project.initialBudget > 0) {
+          budgets = [normalizeBudget({ id: PRIMARY_BUDGET_ID, name: "Main Budget", amount: project.initialBudget })];
+        }
+        if (!budgets.length) throw new Error("no budgets in backup");
         if (!categories.length) categories = DEFAULT_CATEGORIES.slice();
       } catch (e) { toast("Import failed: " + e.message, "err", 4000); return; }
 
-      openConfirm("Import will REPLACE the current project, budget, expenses (" + expenses.length + "), categories and funding sources (" + funds.length + "), then sync to GitHub. Continue?", function () {
+      openConfirm("Import will REPLACE the current project, budgets (" + budgets.length + "), expenses (" + expenses.length + "), categories and funding sources (" + funds.length + "), then sync to GitHub. Continue?", function () {
         closeConfirm();
-        replaceAllData(project, expenses, categories, funds, "Import backup data");
+        replaceAllData(project, expenses, categories, funds, budgets, "Import backup data");
       }, "Import");
     };
     reader.readAsText(file);
   }
 
   function loadDemoData() {
-    openConfirm("Load demo data? This REPLACES the current project, expenses, categories and funding sources, then syncs to GitHub.", function () {
+    openConfirm("Load demo data? This REPLACES the current project, budgets, expenses, categories and funding sources, then syncs to GitHub.", function () {
       closeConfirm();
       var base = todayISO().slice(0, 7);
-      var demoProject = normalizeProject({ projectName: "Demo Home Build", initialBudget: 5000000, currency: "INR", startDate: todayISO() });
+      var demoProject = normalizeProject({ projectName: "Demo Home Build", initialBudget: 5700000, currency: "INR", startDate: todayISO() });
       var now = new Date().toISOString();
+      var demoBudgets = [
+        normalizeBudget({ id: "budget-demo-construction", name: "Construction", amount: 4500000, createdAt: now, updatedAt: now }),
+        normalizeBudget({ id: "budget-demo-interiors", name: "Interiors", amount: 800000, createdAt: now, updatedAt: now }),
+        normalizeBudget({ id: "budget-demo-appliances", name: "Appliances", amount: 400000, createdAt: now, updatedAt: now })
+      ];
       var demoFunds = [
         normalizeFund({ id: "fund-demo-pf", name: "PF Withdrawal", amount: 400000, purpose: "New home appliances: TV, Fridge, AC, Washing Machine", createdAt: now, updatedAt: now }),
         normalizeFund({ id: "fund-demo-loan", name: "Home Loan", amount: 3500000, purpose: "Construction — structure, materials, labour", createdAt: now, updatedAt: now }),
         normalizeFund({ id: "fund-demo-savings", name: "Savings", amount: 1100000, purpose: "Land, approvals, interiors, contingency", createdAt: now, updatedAt: now })
       ];
       var rows = [
-        ["Cement - 60 bags", "Cement", 45000, "Bank Transfer", "ABC Traders", "Foundation", "fund-demo-loan"],
-        ["TMT steel bars", "Steel", 120000, "Bank Transfer", "SteelMart", "Structure", "fund-demo-loan"],
-        ["River sand - 2 loads", "Sand", 35000, "Cash", "Local Supplier", "Foundation", "fund-demo-loan"],
-        ["Masonry labour - week 1", "Labour", 80000, "UPI", "Ramesh Crew", "Structure", "fund-demo-loan"],
-        ["Red bricks - 5000", "Bricks", 40000, "Cash", "Brick Yard", "Walls", "fund-demo-loan"],
-        ["Split AC 1.5 ton", "Appliances", 42000, "Credit Card", "CoolWorld", "Interior", "fund-demo-pf"],
-        ["Double-door refrigerator", "Appliances", 48000, "Credit Card", "CoolWorld", "Interior", "fund-demo-pf"],
-        ["55\" LED TV", "Appliances", 55000, "UPI", "ElectroMart", "Interior", "fund-demo-pf"],
-        ["Plan approval fees", "Government Fees", 30000, "Bank Transfer", "Municipal Office", "Planning", "fund-demo-savings"]
+        ["Cement - 60 bags", "Cement", 45000, "Bank Transfer", "ABC Traders", "Foundation", "fund-demo-loan", "budget-demo-construction"],
+        ["TMT steel bars", "Steel", 120000, "Bank Transfer", "SteelMart", "Structure", "fund-demo-loan", "budget-demo-construction"],
+        ["River sand - 2 loads", "Sand", 35000, "Cash", "Local Supplier", "Foundation", "fund-demo-loan", "budget-demo-construction"],
+        ["Masonry labour - week 1", "Labour", 80000, "UPI", "Ramesh Crew", "Structure", "fund-demo-loan", "budget-demo-construction"],
+        ["Red bricks - 5000", "Bricks", 40000, "Cash", "Brick Yard", "Walls", "fund-demo-loan", "budget-demo-construction"],
+        ["Modular kitchen cabinets", "Kitchen", 185000, "Bank Transfer", "KitchenCo", "Kitchen", "fund-demo-savings", "budget-demo-interiors"],
+        ["Split AC 1.5 ton", "Appliances", 42000, "Credit Card", "CoolWorld", "Interior", "fund-demo-pf", "budget-demo-appliances"],
+        ["Double-door refrigerator", "Appliances", 48000, "Credit Card", "CoolWorld", "Interior", "fund-demo-pf", "budget-demo-appliances"],
+        ["55\" LED TV", "Appliances", 55000, "UPI", "ElectroMart", "Interior", "fund-demo-pf", "budget-demo-appliances"],
+        ["Plan approval fees", "Government Fees", 30000, "Bank Transfer", "Municipal Office", "Planning", "fund-demo-savings", "budget-demo-construction"]
       ];
       var demoExpenses = rows.map(function (r, i) {
         return normalizeExpense({
           id: uid(), date: base + "-" + pad2((i % 26) + 2), description: r[0], category: r[1],
-          amount: r[2], paymentMethod: r[3], vendor: r[4], phase: r[5], fundId: r[6],
+          amount: r[2], paymentMethod: r[3], vendor: r[4], phase: r[5], fundId: r[6], budgetId: r[7],
           notes: "Demo entry", createdAt: now, updatedAt: now
         });
       });
-      replaceAllData(demoProject, demoExpenses, DEFAULT_CATEGORIES.slice(), demoFunds, "Load demo data");
+      replaceAllData(demoProject, demoExpenses, DEFAULT_CATEGORIES.slice(), demoFunds, demoBudgets, "Load demo data");
     }, "Load Demo");
   }
 
-  function replaceAllData(project, expenses, categories, funds, msg) {
-    var snap = { p: state.project, e: state.expenses, c: state.categories, f: state.funds };
-    state.project = project; state.expenses = expenses; state.categories = categories; state.funds = funds || [];
+  function replaceAllData(project, expenses, categories, funds, budgets, msg) {
+    var snap = { p: state.project, e: state.expenses, c: state.categories, f: state.funds, b: state.budgets };
+    state.project = project; state.expenses = expenses; state.categories = categories;
+    state.funds = funds || []; state.budgets = budgets || [];
+    ensurePrimaryBudget();
     renderAll();
     if (state.mode === "readonly" || (state.mode === "direct" && !state.canWrite)) {
       toast("Not connected: data replaced locally only, not saved to GitHub.", "err", 4000); return;
     }
     // sequential writes so each has a fresh sha
     dataClient.write("project", projectPayload(), msg + " (project)")
+      .then(function () { return dataClient.write("budgets", budgetsPayload(), msg + " (budgets)"); })
       .then(function () { return dataClient.write("categories", categoriesPayload(), msg + " (categories)"); })
       .then(function () { return dataClient.write("funds", fundsPayload(), msg + " (funds)"); })
       .then(function () { return dataClient.write("expenses", expensesPayload(), msg + " (expenses)"); })
       .then(function () { toast("✓ Data imported and synced to GitHub", "ok"); renderAll(); })
       .catch(function (err) {
-        state.project = snap.p; state.expenses = snap.e; state.categories = snap.c; state.funds = snap.f;
+        state.project = snap.p; state.expenses = snap.e; state.categories = snap.c; state.funds = snap.f; state.budgets = snap.b;
         renderAll();
         handleWriteError(err);
         toast("Import aborted — some files may need a manual refresh.", "err", 5000);
@@ -1254,6 +1493,14 @@
     state.funds.forEach(function (f) {
       fundSel.appendChild(el("option", { value: f.id, text: f.name + " (" + formatCurrency(f.amount) + ")" }));
     });
+    var budgetSel = $("ex-budget");
+    budgetSel.innerHTML = "";
+    if (!state.budgets.length) budgetSel.appendChild(el("option", { value: "", text: "— no budgets defined —" }));
+    state.budgets.forEach(function (b) {
+      var pb = perBudgetSummary().rows.filter(function (r) { return r.id === b.id; })[0];
+      var left = pb ? pb.remaining : b.amount;
+      budgetSel.appendChild(el("option", { value: b.id, text: b.name + " — " + formatCurrency(left) + " left" }));
+    });
     $("expense-form-error").hidden = true;
     $("expense-modal-title").textContent = expense ? "Edit Expense" : "Add Expense";
     $("ex-id").value = expense ? expense.id : "";
@@ -1265,6 +1512,7 @@
     $("ex-vendor").value = expense ? expense.vendor : "";
     $("ex-phase").value = expense ? expense.phase : "";
     $("ex-fund").value = expense ? (expense.fundId || "") : "";
+    $("ex-budget").value = expense ? (expense.budgetId || "") : (state.budgets[0] ? state.budgets[0].id : "");
     $("ex-notes").value = expense ? expense.notes : "";
     $("expense-modal").hidden = false;
     $("ex-description").focus();
@@ -1339,12 +1587,12 @@
 
     // filters
     var fmap = { "filter-search": "search", "filter-category": "category", "filter-phase": "phase",
-      "filter-payment": "payment", "filter-fund": "fund", "filter-from": "from", "filter-to": "to", "filter-sort": "sort" };
+      "filter-payment": "payment", "filter-fund": "fund", "filter-budget": "budget", "filter-from": "from", "filter-to": "to", "filter-sort": "sort" };
     Object.keys(fmap).forEach(function (id) {
       $(id).addEventListener("input", function () { filters[fmap[id]] = $(id).value; renderExpenses(); });
     });
     $("btn-clear-filters").addEventListener("click", function () {
-      filters = { search: "", category: "", phase: "", payment: "", fund: "", from: "", to: "", sort: "newest" };
+      filters = { search: "", category: "", phase: "", payment: "", fund: "", budget: "", from: "", to: "", sort: "newest" };
       Object.keys(fmap).forEach(function (id) { $(id).value = id === "filter-sort" ? "newest" : ""; });
       renderExpenses();
     });
@@ -1357,6 +1605,10 @@
     $("fund-modal-close").addEventListener("click", closeFundModal);
     $("fund-cancel").addEventListener("click", closeFundModal);
     $("fund-form").addEventListener("submit", function (e) { e.preventDefault(); saveFundFromForm(); });
+    $("btn-add-budget").addEventListener("click", function () { openBudgetModal(null); });
+    $("budget-modal-close").addEventListener("click", closeBudgetModal);
+    $("budget-cancel").addEventListener("click", closeBudgetModal);
+    $("budget-form").addEventListener("submit", function (e) { e.preventDefault(); saveBudgetFromForm(); });
     $("btn-export").addEventListener("click", exportBackup);
     $("btn-import").addEventListener("click", function () { $("import-file").click(); });
     $("import-file").addEventListener("change", function () { if (this.files[0]) { importBackup(this.files[0]); this.value = ""; } });

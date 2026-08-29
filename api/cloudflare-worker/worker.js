@@ -24,6 +24,7 @@
 
 const ALLOWED_FILES = {
   project: "project.json",
+  budgets: "budgets.json",
   expenses: "expenses.json",
   categories: "categories.json",
   funds: "funds.json",
@@ -207,6 +208,19 @@ function validateContent(name, content) {
     if (!content.categories.every((c) => typeof c === "string" && c.length <= 80)) return "categories must be short strings";
     return null;
   }
+  if (name === "budgets") {
+    if (!Array.isArray(content.budgets)) return "budgets must be an array";
+    if (content.budgets.length > 500) return "too many budgets";
+    for (const b of content.budgets) {
+      if (!b || typeof b !== "object") return "budget entries must be objects";
+      if (typeof b.id !== "string" || !b.id) return "each budget needs a string id";
+      if (typeof b.name !== "string" || !b.name.trim()) return "each budget needs a name";
+      if (typeof b.amount !== "number" || !isFinite(b.amount) || b.amount < 0) return "budget amount must be a non-negative number";
+    }
+    const bids = content.budgets.map((b) => b.id);
+    if (new Set(bids).size !== bids.length) return "duplicate budget ids";
+    return null;
+  }
   if (name === "funds") {
     if (!Array.isArray(content.funds)) return "funds must be an array";
     if (content.funds.length > 500) return "too many funds";
@@ -229,6 +243,7 @@ function emptyContent(name) {
     return { projectName: "My New Home", initialBudget: 5000000, currency: "INR", startDate: today,
       createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() };
   }
+  if (name === "budgets") return { budgets: [] };
   if (name === "expenses") return { expenses: [] };
   if (name === "categories") return { categories: [] };
   if (name === "funds") return { funds: [] };

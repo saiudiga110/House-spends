@@ -48,7 +48,7 @@ JSON to be world‑readable, split into two repos:
 | repo | visibility | holds |
 |------|------------|-------|
 | `House-spends` | **public** | the app (HTML/CSS/JS) — Pages deploys from here |
-| `home-budget-data` | **private** | just `data/project.json`, `expenses.json`, `categories.json`, `funds.json` |
+| `home-budget-data` | **private** | just `data/project.json`, `budgets.json`, `expenses.json`, `categories.json`, `funds.json` |
 
 Then in `config.js` set `DATA_REPO: "home-budget-data"`. Your fine‑grained token
 (direct mode) or the Worker (API mode) is given access to the **private** data
@@ -59,11 +59,12 @@ without the token can read or write the data.
 
 ## Features
 
-- **Dashboard** — initial budget, total spent, remaining budget, % used, progress bar, budget‑exceeded warning, category breakdown, per‑funding‑source progress, recent expenses.
-- **Funding sources** — define money pools (e.g. *PF* ₹4,00,000 earmarked for appliances, *Home Loan*, *Savings*), tag each expense with the source it's paid from, and see allocated vs spent vs remaining per source in Reports. Filter the expense list by funding source.
+- **Dashboard** — total across all budgets, total spent, remaining, % used, progress bar, budget‑exceeded warning (overall and per‑budget), per‑budget progress, category breakdown, per‑funding‑source progress, recent expenses.
+- **Multiple budgets** — add several separate named budgets, each with its own limit and its own remaining (e.g. *Construction* ₹45,00,000, *Interiors* ₹8,00,000, *Appliances* ₹4,00,000). Every expense is assigned to one budget. Dashboard and Reports show each budget's spent/remaining plus the grand total. Filter the expense list by budget.
+- **Funding sources** — define money pools (e.g. *PF* ₹4,00,000 earmarked for appliances, *Home Loan*, *Savings*), tag each expense with the source it's paid from, and see allocated vs spent vs remaining per source in Reports. Filter the expense list by funding source. (Budgets = spending limits; funding sources = where the money comes from — an expense can carry both.)
 - **Expenses** — add / edit / delete (delete confirms; edit updates in place, never duplicates). Search (description / vendor / notes), filter by category / phase / payment method / date range, sort by newest / oldest / highest / lowest.
 - **Reports** — budget vs actual, spending by category, by construction phase, by month, by payment method. Bar charts that update automatically.
-- **Settings** — project name, initial budget, start date, currency; custom categories; export / import JSON backup; load demo data; GitHub connection panel; sync status.
+- **Settings** — project name, start date, currency; budgets; funding sources; custom categories; export / import JSON backup; load demo data; GitHub connection panel; sync status.
 - **Indian currency formatting** (`₹1,00,000`) via a reusable formatter; also USD / EUR / GBP. Only numeric values are stored — never `"₹42,000"`.
 - **Data integrity** — every write fetches the current file’s SHA; a concurrent edit produces *“Data changed on GitHub — please refresh”* instead of a silent overwrite. Optimistic UI changes roll back on any failure.
 - **Offline / error states** — clear loading / saving / success / failure messages; the app never claims a save succeeded when it did not.
@@ -167,6 +168,7 @@ to deploy the Worker and set the `GITHUB_TOKEN` / `WRITE_PASSPHRASE` secrets.
       "paymentMethod": "Bank Transfer",
       "vendor": "ABC Traders",
       "phase": "Foundation",
+      "budgetId": "budget-primary",
       "fundId": "fund-abc123",
       "notes": "Initial cement purchase",
       "createdAt": "2026-08-29T10:30:00Z",
@@ -180,6 +182,19 @@ to deploy the Worker and set the `GITHUB_TOKEN` / `WRITE_PASSPHRASE` secrets.
 ```json
 { "categories": ["Land", "Architect", "Cement", "Steel", "Labour", "..."] }
 ```
+
+### `data/budgets.json`
+```json
+{
+  "budgets": [
+    { "id": "budget-primary", "name": "Construction", "amount": 4500000,
+      "notes": "", "createdAt": "2026-08-29T00:00:00Z", "updatedAt": "2026-08-29T00:00:00Z" }
+  ]
+}
+```
+Each expense carries a `"budgetId"`. If `budgets.json` is empty the app derives a
+single "Main Budget" from `project.initialBudget`; `initialBudget` is kept equal
+to the sum of all budgets.
 
 ### `data/funds.json`
 ```json
@@ -234,7 +249,7 @@ with its server‑side token.
   entered by you, sent only to `api.github.com` over HTTPS. Use a fine‑grained
   token scoped to one repo, Contents‑only, with a short expiry.
 - API mode: the token exists only as the Worker secret `GITHUB_TOKEN`.
-- Either way the app can only touch four fixed files in one configured repo —
+- Either way the app can only touch five fixed files in one configured repo —
   the browser cannot request arbitrary repos or paths.
 - Concurrent‑edit protection via blob SHA; no silent overwrite of newer data.
 - User‑entered text is rendered with `textContent` / DOM nodes, never
@@ -295,6 +310,7 @@ House-spends/
 ├── .nojekyll  .gitignore  README.md
 ├── data/
 │   ├── project.json
+│   ├── budgets.json
 │   ├── expenses.json
 │   ├── categories.json
 │   └── funds.json
