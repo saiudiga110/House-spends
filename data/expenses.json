@@ -239,6 +239,21 @@
       "budgetId": "budget-primary",
       "createdAt": "2026-09-05T14:14:18.190Z",
       "updatedAt": "2026-09-05T14:14:18.190Z"
+    },
+    {
+      "id": "expense-mtohfvnh-q1h34w",
+      "date": "2026-09-06",
+      "description": "Cement + Iron advance",
+      "category": "Steel",
+      "amount": 100000,
+      "paymentMethod": "UPI",
+      "vendor": "",
+      "phase": "",
+      "notes": "Cement + Iron advance",
+      "fundId": "",
+      "budgetId": "budget-primary",
+      "createdAt": "2026-09-05T14:33:00.413Z",
+      "updatedAt": "2026-09-05T14:33:00.413Z"
     }
   ]
 }
