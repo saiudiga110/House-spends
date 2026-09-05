@@ -59,6 +59,21 @@
       "budgetId": "budget-primary",
       "createdAt": "2026-09-05T13:14:05.069Z",
       "updatedAt": "2026-09-05T13:14:05.069Z"
+    },
+    {
+      "id": "expense-mtoeo845-muqrr3",
+      "date": "2026-09-05",
+      "description": "For bank verification - engineer",
+      "category": "Miscellaneous",
+      "amount": 500,
+      "paymentMethod": "Cash",
+      "vendor": "",
+      "phase": "",
+      "notes": "",
+      "fundId": "",
+      "budgetId": "budget-primary",
+      "createdAt": "2026-09-05T13:15:30.965Z",
+      "updatedAt": "2026-09-05T13:15:30.965Z"
     }
   ]
 }
