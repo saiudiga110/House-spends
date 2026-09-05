@@ -44,6 +44,21 @@
       "budgetId": "budget-primary",
       "createdAt": "2026-09-05T13:13:28.059Z",
       "updatedAt": "2026-09-05T13:13:28.059Z"
+    },
+    {
+      "id": "expense-mtoemdu5-11lgck",
+      "date": "2026-09-05",
+      "description": "for sweets and hot during bhoomi pooja",
+      "category": "Miscellaneous",
+      "amount": 1020,
+      "paymentMethod": "UPI",
+      "vendor": "",
+      "phase": "",
+      "notes": "",
+      "fundId": "",
+      "budgetId": "budget-primary",
+      "createdAt": "2026-09-05T13:14:05.069Z",
+      "updatedAt": "2026-09-05T13:14:05.069Z"
     }
   ]
 }
