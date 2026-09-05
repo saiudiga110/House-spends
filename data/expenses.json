@@ -224,6 +224,21 @@
       "budgetId": "budget-primary",
       "createdAt": "2026-09-05T14:12:26.787Z",
       "updatedAt": "2026-09-05T14:12:26.787Z"
+    },
+    {
+      "id": "expense-mtogrtqm-k8z446",
+      "date": "2026-09-05",
+      "description": "Bhoomi Pooja Update date",
+      "category": "Miscellaneous",
+      "amount": 500,
+      "paymentMethod": "Cash",
+      "vendor": "",
+      "phase": "",
+      "notes": "Bhoomi Pooja - date update",
+      "fundId": "",
+      "budgetId": "budget-primary",
+      "createdAt": "2026-09-05T14:14:18.190Z",
+      "updatedAt": "2026-09-05T14:14:18.190Z"
     }
   ]
 }
