@@ -164,6 +164,21 @@
       "budgetId": "budget-primary",
       "createdAt": "2026-09-05T13:23:05.497Z",
       "updatedAt": "2026-09-05T13:23:05.497Z"
+    },
+    {
+      "id": "expense-mtoezpte-b4o0r9",
+      "date": "2026-09-05",
+      "description": "red sand",
+      "category": "Sand",
+      "amount": 20500,
+      "paymentMethod": "UPI",
+      "vendor": "",
+      "phase": "",
+      "notes": "kankaru",
+      "fundId": "",
+      "budgetId": "budget-primary",
+      "createdAt": "2026-09-05T13:24:27.122Z",
+      "updatedAt": "2026-09-05T13:24:27.122Z"
     }
   ]
 }
