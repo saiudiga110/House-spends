@@ -194,6 +194,21 @@
       "budgetId": "budget-primary",
       "createdAt": "2026-09-05T13:25:05.084Z",
       "updatedAt": "2026-09-05T13:25:05.084Z"
+    },
+    {
+      "id": "expense-mtof1g12-224xq6",
+      "date": "2026-09-05",
+      "description": "Bhoomi pooja day spends",
+      "category": "Miscellaneous",
+      "amount": 10000,
+      "paymentMethod": "",
+      "vendor": "",
+      "phase": "",
+      "notes": "",
+      "fundId": "",
+      "budgetId": "budget-primary",
+      "createdAt": "2026-09-05T13:25:47.750Z",
+      "updatedAt": "2026-09-05T13:25:47.750Z"
     }
   ]
 }
