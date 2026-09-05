@@ -134,6 +134,21 @@
       "budgetId": "budget-primary",
       "createdAt": "2026-09-05T13:22:08.848Z",
       "updatedAt": "2026-09-05T13:22:08.848Z"
+    },
+    {
+      "id": "expense-mtoexiga-yqec8k",
+      "date": "2026-09-05",
+      "description": "Bricks",
+      "category": "Bricks",
+      "amount": 147000,
+      "paymentMethod": "UPI",
+      "vendor": "",
+      "phase": "",
+      "notes": "Bricks",
+      "fundId": "",
+      "budgetId": "budget-primary",
+      "createdAt": "2026-09-05T13:22:44.266Z",
+      "updatedAt": "2026-09-05T13:22:44.266Z"
     }
   ]
 }
