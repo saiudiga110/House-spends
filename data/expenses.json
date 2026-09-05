@@ -114,11 +114,11 @@
       "paymentMethod": "UPI",
       "vendor": "",
       "phase": "",
-      "notes": "Application charges",
+      "notes": "Application charges & Processing fees",
       "fundId": "",
       "budgetId": "budget-primary",
       "createdAt": "2026-09-05T13:20:31.840Z",
-      "updatedAt": "2026-09-05T13:20:31.840Z"
+      "updatedAt": "2026-09-05T13:25:23.405Z"
     },
     {
       "id": "expense-mtoewr4g-cgchs9",
