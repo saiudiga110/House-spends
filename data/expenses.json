@@ -89,6 +89,21 @@
       "budgetId": "budget-primary",
       "createdAt": "2026-09-05T13:16:24.407Z",
       "updatedAt": "2026-09-05T13:16:24.407Z"
+    },
+    {
+      "id": "expense-mtoesu7n-6v9fqv",
+      "date": "2026-09-05",
+      "description": "Bank person",
+      "category": "Plan Approval",
+      "amount": 2000,
+      "paymentMethod": "UPI",
+      "vendor": "",
+      "phase": "",
+      "notes": "Plan approval for bank",
+      "fundId": "",
+      "budgetId": "budget-primary",
+      "createdAt": "2026-09-05T13:19:06.227Z",
+      "updatedAt": "2026-09-05T13:19:06.227Z"
     }
   ]
 }
