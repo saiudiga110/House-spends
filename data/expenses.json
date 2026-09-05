@@ -14,6 +14,21 @@
       "budgetId": "budget-primary",
       "createdAt": "2026-09-05T13:10:22.034Z",
       "updatedAt": "2026-09-05T13:10:22.034Z"
+    },
+    {
+      "id": "expense-mtoekoqg-bjf2z3",
+      "date": "2026-09-05",
+      "description": "Plan Approval",
+      "category": "Government Fees",
+      "amount": 4500,
+      "paymentMethod": "UPI",
+      "vendor": "",
+      "phase": "",
+      "notes": "",
+      "fundId": "",
+      "budgetId": "budget-primary",
+      "createdAt": "2026-09-05T13:12:45.880Z",
+      "updatedAt": "2026-09-05T13:12:45.880Z"
     }
   ]
 }
