@@ -29,6 +29,21 @@
       "budgetId": "budget-primary",
       "createdAt": "2026-09-05T13:12:45.880Z",
       "updatedAt": "2026-09-05T13:12:45.880Z"
+    },
+    {
+      "id": "expense-mtoella3-kpes5f",
+      "date": "2026-09-05",
+      "description": "Water bore set",
+      "category": "Plumbing",
+      "amount": 8500,
+      "paymentMethod": "Cash",
+      "vendor": "",
+      "phase": "",
+      "notes": "",
+      "fundId": "",
+      "budgetId": "budget-primary",
+      "createdAt": "2026-09-05T13:13:28.059Z",
+      "updatedAt": "2026-09-05T13:13:28.059Z"
     }
   ]
 }
