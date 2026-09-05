@@ -254,6 +254,21 @@
       "budgetId": "budget-primary",
       "createdAt": "2026-09-05T14:33:00.413Z",
       "updatedAt": "2026-09-05T14:33:00.413Z"
+    },
+    {
+      "id": "expense-mtohhi81-w428r1",
+      "date": "2026-09-05",
+      "description": "Sand",
+      "category": "Sand",
+      "amount": 10000,
+      "paymentMethod": "Cash",
+      "vendor": "",
+      "phase": "",
+      "notes": "sand",
+      "fundId": "",
+      "budgetId": "budget-primary",
+      "createdAt": "2026-09-05T14:34:16.321Z",
+      "updatedAt": "2026-09-05T14:34:16.321Z"
     }
   ]
 }
