@@ -74,6 +74,21 @@
       "budgetId": "budget-primary",
       "createdAt": "2026-09-05T13:15:30.965Z",
       "updatedAt": "2026-09-05T13:15:30.965Z"
+    },
+    {
+      "id": "expense-mtoepdcn-g7lsua",
+      "date": "2026-09-05",
+      "description": "EC",
+      "category": "Government Fees",
+      "amount": 2700,
+      "paymentMethod": "",
+      "vendor": "",
+      "phase": "",
+      "notes": "EC -",
+      "fundId": "",
+      "budgetId": "budget-primary",
+      "createdAt": "2026-09-05T13:16:24.407Z",
+      "updatedAt": "2026-09-05T13:16:24.407Z"
     }
   ]
 }
