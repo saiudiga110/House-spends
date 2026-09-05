@@ -209,6 +209,21 @@
       "budgetId": "budget-primary",
       "createdAt": "2026-09-05T13:25:47.750Z",
       "updatedAt": "2026-09-05T13:25:47.750Z"
+    },
+    {
+      "id": "expense-mtogpfs3-tj2pxj",
+      "date": "2026-09-05",
+      "description": "Priest Plan making",
+      "category": "Miscellaneous",
+      "amount": 5000,
+      "paymentMethod": "Cash",
+      "vendor": "",
+      "phase": "",
+      "notes": "Poojari plan making",
+      "fundId": "",
+      "budgetId": "budget-primary",
+      "createdAt": "2026-09-05T14:12:26.787Z",
+      "updatedAt": "2026-09-05T14:12:26.787Z"
     }
   ]
 }
