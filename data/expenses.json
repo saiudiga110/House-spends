@@ -104,6 +104,21 @@
       "budgetId": "budget-primary",
       "createdAt": "2026-09-05T13:19:06.227Z",
       "updatedAt": "2026-09-05T13:19:06.227Z"
+    },
+    {
+      "id": "expense-mtoeuo9s-w6s8q3",
+      "date": "2026-09-05",
+      "description": "Paid for fees (HDFC bank) - application charges",
+      "category": "Miscellaneous",
+      "amount": 5800,
+      "paymentMethod": "UPI",
+      "vendor": "",
+      "phase": "",
+      "notes": "Application charges",
+      "fundId": "",
+      "budgetId": "budget-primary",
+      "createdAt": "2026-09-05T13:20:31.840Z",
+      "updatedAt": "2026-09-05T13:20:31.840Z"
     }
   ]
 }
