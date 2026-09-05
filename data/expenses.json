@@ -1,3 +1,19 @@
 {
-  "expenses": []
+  "expenses": [
+    {
+      "id": "expense-mtoehlqq-bk4099",
+      "date": "2026-09-05",
+      "description": "Cement + Iron advance",
+      "category": "Steel",
+      "amount": 300000,
+      "paymentMethod": "Cash",
+      "vendor": "",
+      "phase": "",
+      "notes": "Paid through normal money",
+      "fundId": "",
+      "budgetId": "budget-primary",
+      "createdAt": "2026-09-05T13:10:22.034Z",
+      "updatedAt": "2026-09-05T13:10:22.034Z"
+    }
+  ]
 }
