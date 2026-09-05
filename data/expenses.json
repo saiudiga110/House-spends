@@ -179,6 +179,21 @@
       "budgetId": "budget-primary",
       "createdAt": "2026-09-05T13:24:27.122Z",
       "updatedAt": "2026-09-05T13:24:27.122Z"
+    },
+    {
+      "id": "expense-mtof0j3w-xyqbfm",
+      "date": "2026-09-05",
+      "description": "Land Registration",
+      "category": "Land",
+      "amount": 30000,
+      "paymentMethod": "UPI",
+      "vendor": "",
+      "phase": "",
+      "notes": "Land registration",
+      "fundId": "",
+      "budgetId": "budget-primary",
+      "createdAt": "2026-09-05T13:25:05.084Z",
+      "updatedAt": "2026-09-05T13:25:05.084Z"
     }
   ]
 }
