@@ -149,6 +149,21 @@
       "budgetId": "budget-primary",
       "createdAt": "2026-09-05T13:22:44.266Z",
       "updatedAt": "2026-09-05T13:22:44.266Z"
+    },
+    {
+      "id": "expense-mtoexyu1-r0c0d3",
+      "date": "2026-09-05",
+      "description": "Sand",
+      "category": "Sand",
+      "amount": 50000,
+      "paymentMethod": "UPI",
+      "vendor": "",
+      "phase": "",
+      "notes": "Sand",
+      "fundId": "",
+      "budgetId": "budget-primary",
+      "createdAt": "2026-09-05T13:23:05.497Z",
+      "updatedAt": "2026-09-05T13:23:05.497Z"
     }
   ]
 }
